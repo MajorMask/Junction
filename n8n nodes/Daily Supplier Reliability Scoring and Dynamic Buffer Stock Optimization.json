@@ -1,0 +1,684 @@
+{
+  "name": "Daily Supplier Reliability Scoring and Dynamic Buffer Stock Optimization",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 22
+            }
+          ]
+        }
+      },
+      "id": "48b263f2-8991-429c-a5ee-376ba0d2eeb3",
+      "name": "Daily Trigger at 22:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1136,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "z_score_service_level",
+              "value": 1.65,
+              "type": "number"
+            },
+            {
+              "id": "id-2",
+              "name": "lead_time_days",
+              "value": 7,
+              "type": "number"
+            },
+            {
+              "id": "id-3",
+              "name": "reliable_threshold",
+              "value": 85,
+              "type": "number"
+            },
+            {
+              "id": "id-4",
+              "name": "moderate_threshold",
+              "value": 70,
+              "type": "number"
+            },
+            {
+              "id": "id-5",
+              "name": "buffer_increase_moderate",
+              "value": 0.2,
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "buffer_increase_unreliable",
+              "value": 0.5,
+              "type": "number"
+            },
+            {
+              "id": "id-7",
+              "name": "slack_channel",
+              "value": "<__PLACEHOLDER_VALUE__Slack channel ID for alerts__>",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "procurement_email",
+              "value": "<__PLACEHOLDER_VALUE__Procurement manager email__>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "aaf47d2b-7230-4280-8461-040dc4b4c8de",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -912,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT po.supplier_id, po.plant, po.storage_location, po.material_number, po.ordered_qty, po.received_qty, po.requested_date, po.actual_delivery_date, po.order_date FROM purchase_orders po WHERE po.order_date >= CURRENT_DATE - INTERVAL '30 days' ORDER BY po.supplier_id, po.order_date",
+        "options": {}
+      },
+      "id": "a69569cb-daf3-4001-8667-ec49f77c3aa6",
+      "name": "Get Purchase Orders Last 30 Days",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -688,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ro.material_number, ro.plant, ro.storage_location, ro.ordered_qty, ro.order_date, ro.reason FROM replacement_orders ro WHERE ro.order_date >= CURRENT_DATE - INTERVAL '90 days' ORDER BY ro.material_number, ro.order_date",
+        "options": {}
+      },
+      "id": "539c5e4b-6e84-47aa-baeb-ef45097d9e1e",
+      "name": "Get Replacement Orders Last 90 Days",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -688,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT inv.material_number, inv.plant, inv.storage_location, inv.current_stock, inv.category, inv.last_updated FROM inventory inv ORDER BY inv.material_number",
+        "options": {}
+      },
+      "id": "07b5bcbb-4f3e-4f55-88d4-71700875fe13",
+      "name": "Get Current Inventory Levels",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -464,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from previous nodes\nconst purchaseOrders = $input.first().json;\nconst replacementOrders = $('Get Replacement Orders Last 90 Days').all();\n\n// Group purchase orders by supplier (plant + storage_location)\nconst supplierData = {};\n\n// Process purchase orders\nfor (const order of purchaseOrders) {\n  const supplierId = `${order.plant}_${order.storage_location}`;\n  \n  if (!supplierData[supplierId]) {\n    supplierData[supplierId] = {\n      supplier_id: supplierId,\n      plant: order.plant,\n      storage_location: order.storage_location,\n      total_ordered_qty: 0,\n      total_received_qty: 0,\n      total_deliveries: 0,\n      on_time_deliveries: 0,\n      quality_incidents: 0\n    };\n  }\n  \n  // Accumulate quantities\n  supplierData[supplierId].total_ordered_qty += parseFloat(order.ordered_qty || 0);\n  supplierData[supplierId].total_received_qty += parseFloat(order.received_qty || 0);\n  supplierData[supplierId].total_deliveries += 1;\n  \n  // Check if delivery was on time\n  if (order.delivery_date && order.expected_delivery_date) {\n    const deliveryDate = new Date(order.delivery_date);\n    const expectedDate = new Date(order.expected_delivery_date);\n    if (deliveryDate <= expectedDate) {\n      supplierData[supplierId].on_time_deliveries += 1;\n    }\n  }\n}\n\n// Process replacement orders for quality incidents\nfor (const replacement of replacementOrders) {\n  const supplierId = `${replacement.plant}_${replacement.storage_location}`;\n  \n  if (supplierData[supplierId]) {\n    supplierData[supplierId].quality_incidents += 1;\n  }\n}\n\n// Calculate scores for each supplier\nconst supplierScores = [];\n\nfor (const supplierId in supplierData) {\n  const supplier = supplierData[supplierId];\n  \n  // Calculate rates\n  const fulfillment_rate = supplier.total_ordered_qty > 0 \n    ? supplier.total_received_qty / supplier.total_ordered_qty \n    : 0;\n  \n  const on_time_rate = supplier.total_deliveries > 0 \n    ? supplier.on_time_deliveries / supplier.total_deliveries \n    : 0;\n  \n  const quality_incident_rate = supplier.total_deliveries > 0 \n    ? supplier.quality_incidents / supplier.total_deliveries \n    : 0;\n  \n  // Calculate supplier score using the formula\n  // supplier_score = (fulfillment_rate * 0.5) + (on_time_rate * 0.3) - (quality_incident_rate * 0.2)\n  // Scale to 0-100\n  const raw_score = (fulfillment_rate * 0.5) + (on_time_rate * 0.3) - (quality_incident_rate * 0.2);\n  const supplier_score = Math.max(0, Math.min(100, raw_score * 100));\n  \n  // Determine tier\n  let tier;\n  if (supplier_score >= 85) {\n    tier = 'RELIABLE';\n  } else if (supplier_score >= 70) {\n    tier = 'MODERATE';\n  } else {\n    tier = 'UNRELIABLE';\n  }\n  \n  supplierScores.push({\n    supplier_id: supplier.supplier_id,\n    plant: supplier.plant,\n    storage_location: supplier.storage_location,\n    fulfillment_rate: Math.round(fulfillment_rate * 10000) / 100,\n    on_time_rate: Math.round(on_time_rate * 10000) / 100,\n    quality_incident_rate: Math.round(quality_incident_rate * 10000) / 100,\n    supplier_score: Math.round(supplier_score * 100) / 100,\n    tier: tier,\n    calculation_date: new Date().toISOString()\n  });\n}\n\n// Return array of supplier scores\nreturn supplierScores.map(score => ({ json: score }));"
+      },
+      "id": "0360222b-2a5a-42e3-a992-b8d74502b3d5",
+      "name": "Calculate Supplier Reliability Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -464,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from previous nodes\nconst purchaseOrders = $('Get Purchase Orders Last 30 Days').all();\nconst replacementOrders = $('Get Replacement Orders Last 90 Days').all();\nconst inventoryLevels = $('Get Current Inventory Levels').all();\nconst supplierScores = $('Calculate Supplier Reliability Scores').all();\nconst config = $('Workflow Configuration').first().json;\n\n// Get configuration values\nconst lead_time_days = config.lead_time_days || 14;\nconst z_score_service_level = config.z_score_service_level || 1.65; // 95% service level\n\n// Helper function to calculate standard deviation\nfunction calculateStdDev(values) {\n  if (values.length === 0) return 0;\n  const mean = values.reduce((sum, val) => sum + val, 0) / values.length;\n  const squaredDiffs = values.map(val => Math.pow(val - mean, 2));\n  const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / values.length;\n  return Math.sqrt(variance);\n}\n\n// Group replacement orders by product and calculate daily demand\nconst productDemandData = {};\n\nfor (const order of replacementOrders) {\n  const materialNumber = order.json.material_number;\n  const category = order.json.category;\n  const orderedQty = order.json.ordered_qty || 0;\n  const orderDate = order.json.order_date;\n  \n  if (!productDemandData[materialNumber]) {\n    productDemandData[materialNumber] = {\n      category: category,\n      dailyDemands: [],\n      totalQty: 0,\n      orders: []\n    };\n  }\n  \n  productDemandData[materialNumber].totalQty += orderedQty;\n  productDemandData[materialNumber].orders.push({\n    date: orderDate,\n    qty: orderedQty\n  });\n}\n\n// Calculate daily demand by grouping orders by date\nfor (const materialNumber in productDemandData) {\n  const data = productDemandData[materialNumber];\n  const dailyDemandMap = {};\n  \n  for (const order of data.orders) {\n    const dateKey = order.date;\n    if (!dailyDemandMap[dateKey]) {\n      dailyDemandMap[dateKey] = 0;\n    }\n    dailyDemandMap[dateKey] += order.qty;\n  }\n  \n  data.dailyDemands = Object.values(dailyDemandMap);\n}\n\n// Group supplier scores by category\nconst categorySupplierScores = {};\n\nfor (const scoreData of supplierScores) {\n  const category = scoreData.json.category;\n  const supplierScore = scoreData.json.supplier_score || 0;\n  \n  if (!categorySupplierScores[category]) {\n    categorySupplierScores[category] = [];\n  }\n  \n  categorySupplierScores[category].push(supplierScore);\n}\n\n// Calculate average supplier score per category\nconst categoryAvgSupplierScore = {};\n\nfor (const category in categorySupplierScores) {\n  const scores = categorySupplierScores[category];\n  const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;\n  categoryAvgSupplierScore[category] = avgScore;\n}\n\n// Create supplier score lookup by material number\nconst materialSupplierScore = {};\nconst materialSupplierTier = {};\n\nfor (const scoreData of supplierScores) {\n  const materialNumber = scoreData.json.material_number;\n  materialSupplierScore[materialNumber] = scoreData.json.supplier_score || 0;\n  materialSupplierTier[materialNumber] = scoreData.json.supplier_tier || 'Unknown';\n}\n\n// Create inventory lookup\nconst inventoryLookup = {};\n\nfor (const inv of inventoryLevels) {\n  const materialNumber = inv.json.material_number;\n  inventoryLookup[materialNumber] = inv.json.current_stock || 0;\n}\n\n// Calculate buffer stock thresholds for each product\nconst results = [];\n\nfor (const materialNumber in productDemandData) {\n  const data = productDemandData[materialNumber];\n  const category = data.category;\n  \n  // Calculate average daily demand (total qty / 90 days)\n  const average_daily_demand = data.totalQty / 90;\n  \n  // Calculate demand volatility (standard deviation of daily demands)\n  const demand_volatility = calculateStdDev(data.dailyDemands);\n  \n  // Get supplier reliability factor for the category\n  const supplier_reliability_factor = categoryAvgSupplierScore[category] || 50;\n  \n  // Calculate buffer stock using the formula\n  const buffer_stock = Math.ceil(\n    (average_daily_demand * lead_time_days) + \n    (demand_volatility * z_score_service_level) * \n    (1 + ((100 - supplier_reliability_factor) / 100))\n  );\n  \n  // Get current stock\n  const current_stock = inventoryLookup[materialNumber] || 0;\n  \n  // Check if below threshold\n  const below_threshold = current_stock < buffer_stock;\n  \n  // Get supplier score and tier for this material\n  const supplier_score = materialSupplierScore[materialNumber] || 0;\n  const supplier_tier = materialSupplierTier[materialNumber] || 'Unknown';\n  \n  results.push({\n    json: {\n      material_number: materialNumber,\n      category: category,\n      current_stock: current_stock,\n      buffer_stock_threshold: buffer_stock,\n      below_threshold: below_threshold,\n      supplier_score: supplier_score,\n      supplier_tier: supplier_tier,\n      average_daily_demand: Math.round(average_daily_demand * 100) / 100,\n      demand_volatility: Math.round(demand_volatility * 100) / 100,\n      supplier_reliability_factor: Math.round(supplier_reliability_factor * 100) / 100\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "d60c96cc-0f1d-4237-bce7-b84cb336726a",
+      "name": "Calculate Dynamic Buffer Stock Thresholds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        -96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Calculate Supplier Reliability Scores').item.json.supplier_score }}",
+              "rightValue": "70",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "47c64fdb-98b9-4291-9102-dc1fe4e1fb09",
+      "name": "Check If Supplier Score Below 70",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -240,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT supplier_id, plant, storage_location, COUNT(*) as consecutive_weeks FROM supplier_scores WHERE supplier_score < 70 AND score_date >= CURRENT_DATE - INTERVAL '21 days' GROUP BY supplier_id, plant, storage_location, DATE_TRUNC('week', score_date) HAVING COUNT(DISTINCT DATE_TRUNC('week', score_date)) >= 3",
+        "options": {}
+      },
+      "id": "b06ef68c-cdfc-4b61-a217-c2dc170dee4c",
+      "name": "Check 3 Week Consecutive Low Score",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.consecutive_weeks }}",
+              "rightValue": "3",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c0a81f64-7c3b-43aa-b691-5097d636fa48",
+      "name": "Check If 3 Consecutive Weeks",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.slack_channel }}"
+        },
+        "text": "=🚨 SUPPLIER ALERT: Supplier {{ $json.supplier_id }} (Plant: {{ $json.plant }}, Storage: {{ $json.storage_location }}) has scored below 70 for 3 consecutive weeks. Immediate review required. Current score: {{ $json.supplier_score }}. Tier: {{ $json.supplier_tier }}",
+        "otherOptions": {}
+      },
+      "id": "ae289990-a703-4205-a58b-9a320558a09e",
+      "name": "Alert Procurement Manager",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        432,
+        192
+      ],
+      "webhookId": "1f5e47a0-d556-47ab-ba92-daa0ff17a035"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Workflow Configuration').first().json.procurement_email }}",
+        "subject": "=Supplier Performance Review Required - {{ $json.supplier_id }}",
+        "message": "=<h2>Supplier Performance Review Required</h2>\n\n<p>The following supplier has shown consistently low performance scores and requires immediate attention:</p>\n\n<table style=\"border-collapse: collapse; width: 100%; margin: 20px 0;\">\n  <tr style=\"background-color: #f2f2f2;\">\n    <th style=\"border: 1px solid #ddd; padding: 12px; text-align: left;\">Metric</th>\n    <th style=\"border: 1px solid #ddd; padding: 12px; text-align: left;\">Value</th>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Supplier ID</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $json.supplier_id }}</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Plant</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $json.plant }}</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Storage Location</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $json.storage_location }}</td>\n  </tr>\n  <tr style=\"background-color: #fff3cd;\">\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Supplier Score</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>{{ $json.supplier_score }}%</strong></td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Fulfillment Rate</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $json.fulfillment_rate }}%</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>On-Time Delivery Rate</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $json.on_time_rate }}%</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Quality Incident Rate</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $json.quality_incident_rate }}%</td>\n  </tr>\n</table>\n\n<div style=\"background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; padding: 15px; margin: 20px 0;\">\n  <h3 style=\"color: #721c24; margin-top: 0;\">⚠️ Action Required</h3>\n  <p style=\"color: #721c24; margin-bottom: 0;\">This supplier has maintained a score below 70% for three consecutive weeks. Please review their performance and consider sourcing from alternate suppliers to mitigate supply chain risks.</p>\n</div>\n\n<p>Please take appropriate action to address this supplier performance issue.</p>\n\n<p style=\"color: #666; font-size: 12px; margin-top: 30px;\">This is an automated alert from the Supplier Reliability Monitoring System.</p>",
+        "options": {}
+      },
+      "id": "46542707-45aa-46ac-9daf-f86f66550ee9",
+      "name": "Email Supplier Performance Report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        432,
+        384
+      ],
+      "webhookId": "809da011-a389-4fae-816b-e4e0cb27f308"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.below_threshold }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "091b8036-aa35-4b1c-91c2-56831207601c",
+      "name": "Check If Inventory Below Buffer Stock",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -16,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Generate Purchase Order Draft\nconst item = $input.item.json;\n\n// Calculate reorder quantity\nconst reorderQty = item.buffer_stock_threshold - item.current_stock;\n\n// Determine urgency level based on supplier tier\nlet urgencyLevel;\nif (item.supplier_tier === 'UNRELIABLE') {\n  urgencyLevel = item.lead_time + 2;\n} else {\n  urgencyLevel = item.lead_time;\n}\n\n// Determine recommended action\nlet recommendedAction;\nif (item.supplier_tier === 'UNRELIABLE') {\n  recommendedAction = 'URGENT: Order from alternative supplier or expedite delivery';\n} else if (reorderQty > item.buffer_stock_threshold * 0.5) {\n  recommendedAction = 'HIGH PRIORITY: Place order immediately';\n} else {\n  recommendedAction = 'STANDARD: Place order within normal timeframe';\n}\n\n// Create purchase order draft\nconst purchaseOrderDraft = {\n  material_number: item.material_number,\n  plant: item.plant,\n  storage_location: item.storage_location,\n  reorder_qty: reorderQty,\n  supplier_tier: item.supplier_tier,\n  urgency_level: urgencyLevel,\n  recommended_action: recommendedAction,\n  current_stock: item.current_stock,\n  buffer_stock_threshold: item.buffer_stock_threshold,\n  lead_time: item.lead_time,\n  draft_date: new Date().toISOString()\n};\n\nreturn purchaseOrderDraft;"
+      },
+      "id": "9a4b7ed7-b0b7-4b57-9ac5-cb7a578385cb",
+      "name": "Generate Purchase Order Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.slack_channel }}"
+        },
+        "text": "=⚠️ LOW STOCK ALERT: Material {{ $json.material_number }} (Plant: {{ $json.plant }}, Storage: {{ $json.storage_location }}) is below buffer stock threshold. Current: {{ $json.current_stock }}, Threshold: {{ $json.buffer_stock_threshold }}. Supplier Tier: {{ $json.supplier_tier }}. Reorder Qty: {{ $json.reorder_qty }}. Urgency: {{ $json.urgency_level }}",
+        "otherOptions": {}
+      },
+      "id": "00eb5e33-2e7d-467d-95fd-505c488f9a92",
+      "name": "Alert Low Stock",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        432,
+        -144
+      ],
+      "webhookId": "14aa5b59-ed2f-4a6c-a4a2-9c8528bea570"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "supplier_scores"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "supplier_id": "={{ $json.supplier_id }}",
+            "plant": "={{ $json.plant }}",
+            "storage_location": "={{ $json.storage_location }}",
+            "fulfillment_rate": "={{ $json.fulfillment_rate }}",
+            "on_time_rate": "={{ $json.on_time_rate }}",
+            "quality_incident_rate": "={{ $json.quality_incident_rate }}",
+            "supplier_score": "={{ $json.supplier_score }}",
+            "supplier_tier": "={{ $json.supplier_tier }}",
+            "score_date": "={{ $now.toFormat('yyyy-MM-dd') }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "225a5fbf-324e-4927-9d08-5f2f90b3d5b8",
+      "name": "Store Supplier Scores",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -240,
+        456
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "buffer_stock_thresholds"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "material_number": "={{ $json.material_number }}",
+            "plant": "={{ $json.plant }}",
+            "storage_location": "={{ $json.storage_location }}",
+            "category": "={{ $json.category }}",
+            "buffer_stock_threshold": "={{ $json.buffer_stock_threshold }}",
+            "average_daily_demand": "={{ $json.average_daily_demand }}",
+            "demand_volatility": "={{ $json.demand_volatility }}",
+            "supplier_reliability_factor": "={{ $json.supplier_reliability_factor }}",
+            "last_updated": "={{ $now.toISO() }}"
+          },
+          "matchingColumns": [
+            "material_number",
+            "plant",
+            "storage_location"
+          ],
+          "schema": [
+            {
+              "id": "material_number",
+              "displayName": "material_number",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "plant",
+              "displayName": "plant",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "storage_location",
+              "displayName": "storage_location",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "buffer_stock_threshold",
+              "displayName": "buffer_stock_threshold",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "average_daily_demand",
+              "displayName": "average_daily_demand",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "demand_volatility",
+              "displayName": "demand_volatility",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "supplier_reliability_factor",
+              "displayName": "supplier_reliability_factor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "last_updated",
+              "displayName": "last_updated",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7f1129db-b642-477d-a9a5-987f49a70e42",
+      "name": "Update Buffer Stock Thresholds",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Trigger at 22:00": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Get Purchase Orders Last 30 Days",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Replacement Orders Last 90 Days",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Current Inventory Levels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Purchase Orders Last 30 Days": {
+      "main": [
+        [
+          {
+            "node": "Calculate Supplier Reliability Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Replacement Orders Last 90 Days": {
+      "main": [
+        [
+          {
+            "node": "Calculate Supplier Reliability Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Supplier Reliability Scores": {
+      "main": [
+        [
+          {
+            "node": "Calculate Dynamic Buffer Stock Thresholds",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check If Supplier Score Below 70",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Store Supplier Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Inventory Levels": {
+      "main": [
+        [
+          {
+            "node": "Calculate Dynamic Buffer Stock Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Supplier Score Below 70": {
+      "main": [
+        [
+          {
+            "node": "Check 3 Week Consecutive Low Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check 3 Week Consecutive Low Score": {
+      "main": [
+        [
+          {
+            "node": "Check If 3 Consecutive Weeks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If 3 Consecutive Weeks": {
+      "main": [
+        [
+          {
+            "node": "Alert Procurement Manager",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Supplier Performance Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Dynamic Buffer Stock Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Check If Inventory Below Buffer Stock",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Buffer Stock Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check If Inventory Below Buffer Stock": {
+      "main": [
+        [
+          {
+            "node": "Generate Purchase Order Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Purchase Order Draft": {
+      "main": [
+        [
+          {
+            "node": "Alert Low Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ecc93881-97a9-42ff-ba59-4c3b7b3b4a9b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dbdcbc61759b74ce7dbae0577ee323edf97ebe03ba4a51299e539cd2f3dbb193"
+  },
+  "id": "WE6oqp2DTlMrFPFj",
+  "tags": []
+}

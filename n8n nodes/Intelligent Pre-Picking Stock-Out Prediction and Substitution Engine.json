@@ -1,0 +1,825 @@
+{
+  "name": "Intelligent Pre-Picking Stock-Out Prediction and Substitution Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "6dcdaf86-5878-4bb3-9a05-e7fe7e12d389",
+      "name": "Schedule Every 15 Minutes (04:00-14:00 Finnish Time)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -464,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "sapDatabaseHost",
+              "value": "<__PLACEHOLDER_VALUE__SAP Database Host__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "sapDatabaseName",
+              "value": "<__PLACEHOLDER_VALUE__SAP Database Name__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "productDataJsonUrl",
+              "value": "<__PLACEHOLDER_VALUE__Product Data JSON URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "zillizApiEndpoint",
+              "value": "<__PLACEHOLDER_VALUE__Zilliz API Endpoint__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "vertexAiEndpoint",
+              "value": "<__PLACEHOLDER_VALUE__Vertex AI Prediction Endpoint__>",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "supplierReliabilityThreshold",
+              "value": 0.85,
+              "type": "number"
+            },
+            {
+              "id": "id-7",
+              "name": "stockOutRiskThreshold",
+              "value": 0.3,
+              "type": "number"
+            },
+            {
+              "id": "id-8",
+              "name": "workflow2WebhookUrl",
+              "value": "<__PLACEHOLDER_VALUE__Workflow 2 Webhook URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-9",
+              "name": "arVrDashboardUrl",
+              "value": "<__PLACEHOLDER_VALUE__AR/VR Dashboard API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-10",
+              "name": "managerDashboardUrl",
+              "value": "<__PLACEHOLDER_VALUE__Manager Dashboard API URL__>",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "13d9243f-daea-492d-b763-5839ed669604",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM valio_aimo_sales_and_deliveries_junction_2025 WHERE DATE(picking_confirmed_date) = CURRENT_DATE ORDER BY CASE WHEN customer_dissatisfaction_history = true THEN 1 WHEN frequent_customer = true THEN 2 ELSE 3 END, delivery_number, warehouse_number",
+        "options": {}
+      },
+      "id": "c3c53579-18e0-416b-a121-011d412bb66f",
+      "name": "Fetch Today's Picking Schedule from SAP",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT product_code, storage_location, inventory_level, warehouse_number FROM sap_inventory_levels WHERE last_updated >= CURRENT_DATE",
+        "options": {}
+      },
+      "id": "7f8d00ed-2c1a-4e79-ab1a-a96123332a31",
+      "name": "Fetch Current Inventory Levels",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT product_code, ordered_qty, received_qty, supplier_id, order_date FROM valio_aimo_purchases_junction_2025 WHERE order_date >= CURRENT_DATE - INTERVAL '90 days'",
+        "options": {}
+      },
+      "id": "26ce3bbc-6099-46f3-a70d-f678f29edd81",
+      "name": "Fetch Purchase Orders (90 Days)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT product_code, delivered_qty, picking_picked_qty, replacement_reason, order_date FROM valio_aimo_replacement_orders_junction_2025 WHERE order_date >= CURRENT_DATE - INTERVAL '180 days'",
+        "options": {}
+      },
+      "id": "3bdd200d-204b-4502-a32d-336ea8c8c1b4",
+      "name": "Fetch Replacement Orders History",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -16,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.productDataJsonUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "ea7a7de4-5e66-465a-a483-c1d34b4299c9",
+      "name": "Fetch Product Data JSON",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -16,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "fieldsToMatchString": "product_code",
+        "options": {}
+      },
+      "id": "17cbdc5e-eb11-442f-97e9-a1ee171a4899",
+      "name": "Merge All Data Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        208,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate supplier reliability scores based on purchase order history\n// Group by product_code and supplier_id, calculate fulfillment rate\n\nconst items = $input.all();\n\n// Extract purchase orders from the merged data\nconst purchaseOrders = [];\nfor (const item of items) {\n  if (item.json.purchase_orders) {\n    purchaseOrders.push(...item.json.purchase_orders);\n  }\n}\n\n// Group by product_code and supplier_id\nconst supplierStats = {};\n\nfor (const po of purchaseOrders) {\n  const key = `${po.product_code}_${po.supplier_id}`;\n  \n  if (!supplierStats[key]) {\n    supplierStats[key] = {\n      product_code: po.product_code,\n      supplier_id: po.supplier_id,\n      totalOrdered: 0,\n      totalReceived: 0\n    };\n  }\n  \n  supplierStats[key].totalOrdered += po.ordered_qty || 0;\n  supplierStats[key].totalReceived += po.received_qty || 0;\n}\n\n// Calculate fulfillment rates and flag unreliable suppliers\nconst supplierReliability = {};\n\nfor (const key in supplierStats) {\n  const stats = supplierStats[key];\n  const fulfillmentRate = stats.totalOrdered > 0 \n    ? stats.totalReceived / stats.totalOrdered \n    : 1.0;\n  \n  const productSupplierKey = `${stats.product_code}_${stats.supplier_id}`;\n  supplierReliability[productSupplierKey] = {\n    supplierReliabilityScore: fulfillmentRate,\n    isUnreliableSupplier: fulfillmentRate < 0.85\n  };\n}\n\n// Add supplier reliability fields to each item\nconst enrichedItems = items.map(item => {\n  const productCode = item.json.product_code || item.json.ProductCode;\n  const supplierId = item.json.supplier_id || item.json.SupplierId;\n  \n  const key = `${productCode}_${supplierId}`;\n  const reliability = supplierReliability[key] || {\n    supplierReliabilityScore: 1.0,\n    isUnreliableSupplier: false\n  };\n  \n  return {\n    json: {\n      ...item.json,\n      supplierReliabilityScore: reliability.supplierReliabilityScore,\n      isUnreliableSupplier: reliability.isUnreliableSupplier\n    }\n  };\n});\n\nreturn enrichedItems;"
+      },
+      "id": "be2780e8-1223-43fe-a3b3-828310a008c3",
+      "name": "Calculate Supplier Reliability Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare features for Vertex AI Model\n// Extract and transform data from merged sources into ML-ready format\n\nconst items = $input.all();\nconst instances = [];\n\n// Helper function to check if date is a holiday (Finnish holidays)\nfunction isHoliday(date) {\n  const holidays = [\n    '01-01', '01-06', '05-01', '12-06', '12-24', '12-25', '12-26'\n  ];\n  const monthDay = date.toFormat('MM-dd');\n  return holidays.includes(monthDay);\n}\n\nfor (const item of items) {\n  const json = item.json;\n  \n  // Extract basic features\n  const orderedQty = json.ordered_qty || 0;\n  const inventoryLevel = json.inventory_level || 0;\n  const supplierReliabilityScore = json.supplierReliabilityScore || 0.5;\n  \n  // Calculate seasonality indicators\n  const currentDate = $now;\n  const dayOfWeek = currentDate.weekday; // 1=Monday, 7=Sunday\n  const month = currentDate.month; // 1-12\n  const isHolidayFlag = isHoliday(currentDate) ? 1 : 0;\n  \n  // Extract shelf life from product data\n  const shelfLife = json.shelf_life || json.product_shelf_life || 365;\n  \n  // Count quality incidents from replacement orders\n  const qualityIncidents = json.quality_incidents_count || 0;\n  \n  // Calculate pick time window pressure\n  // Higher value = more pressure (less time available)\n  const currentHour = currentDate.hour;\n  const pickingEndHour = 14; // 14:00 Finnish time\n  const hoursRemaining = Math.max(0, pickingEndHour - currentHour);\n  const pickTimeWindowPressure = hoursRemaining > 0 ? (1 / hoursRemaining) : 1;\n  \n  // Build feature instance for Vertex AI\n  const instance = {\n    ordered_qty: orderedQty,\n    inventory_level: inventoryLevel,\n    supplier_reliability_score: supplierReliabilityScore,\n    day_of_week: dayOfWeek,\n    month: month,\n    is_holiday: isHolidayFlag,\n    shelf_life: shelfLife,\n    quality_incidents: qualityIncidents,\n    pick_time_window_pressure: pickTimeWindowPressure,\n    // Include identifiers for tracking\n    product_id: json.product_id || json.material_number,\n    order_id: json.order_id || json.sales_order\n  };\n  \n  instances.push(instance);\n}\n\n// Format for Vertex AI Prediction API\nconst vertexAIPayload = {\n  instances: instances\n};\n\nreturn [{ json: vertexAIPayload }];"
+      },
+      "id": "b385de2b-dbd4-4013-a5fa-2cff3cae9951",
+      "name": "Prepare Features for Vertex AI Model",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        656,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.vertexAiEndpoint }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.instances }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "7c40c776-bd7d-4999-bd35-7a8aa9d3c7a6",
+      "name": "Call Vertex AI Prediction API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        880,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Parse Vertex AI response and flag anomalies\nconst item = $input.item.json;\n\n// Extract prediction from Vertex AI response\nconst predictions = item.predictions || [];\nlet stockOutProbability = 0;\nlet confidenceScore = 0;\n\n// Parse the prediction array (assuming first prediction contains our values)\nif (predictions.length > 0) {\n  const prediction = predictions[0];\n  \n  // Extract stock-out probability and confidence\n  // Adjust these field names based on your actual Vertex AI model output\n  stockOutProbability = prediction.stockOutProbability || prediction.probability || 0;\n  confidenceScore = prediction.confidence || prediction.confidenceScore || 0;\n}\n\n// Apply supplier penalty if supplier is unreliable\nconst supplierReliabilityScore = item.supplierReliabilityScore || 1.0;\nif (supplierReliabilityScore < 0.7) {\n  stockOutProbability += 0.15;\n  // Cap at 1.0\n  stockOutProbability = Math.min(stockOutProbability, 1.0);\n}\n\n// Calculate final risk level\nlet riskLevel = 'LOW';\nlet needsSubstitution = false;\n\nif (stockOutProbability > 0.6) {\n  riskLevel = 'HIGH';\n  needsSubstitution = true;\n} else if (stockOutProbability > 0.3) {\n  riskLevel = 'MEDIUM';\n  needsSubstitution = true;\n}\n\n// Return enriched item with risk assessment\nreturn {\n  ...item,\n  stockOutProbability: stockOutProbability,\n  confidenceScore: confidenceScore,\n  riskLevel: riskLevel,\n  needsSubstitution: needsSubstitution\n};"
+      },
+      "id": "b2aaf553-617c-42b3-9db1-b20c3208b4b2",
+      "name": "Parse Vertex AI Response and Flag Anomalies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Parse Vertex AI Response and Flag Anomalies').item.json.stockOutProbability }}",
+              "rightValue": "={{ $('Workflow Configuration').first().json.stockOutRiskThreshold }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8ce5126b-a1b5-4d4f-8d9f-36f0fb803cbc",
+      "name": "Check Stock-Out Risk Level",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1328,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.zillizApiEndpoint }}/search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"collectionName\": \"products\",\n  \"vector\": {{ $json.product_embedding }},\n  \"limit\": 5,\n  \"filter\": \"category == '{{ $json.category }}' && brand == '{{ $json.brand }}'\",\n  \"outputFields\": [\"product_code\", \"product_name\", \"category\", \"brand\", \"price\", \"stock_level\"]\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "a2e7c270-fec5-487a-ad25-68fc5f443d17",
+      "name": "Query Zilliz Vector DB for Substitutes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1552,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Score and Rank Substitution Candidates\n// This code processes substitute products from Zilliz vector DB and ranks them\n\nconst item = $input.item.json;\n\n// Extract substitute candidates from vector DB response\nconst substitutes = item.substitutes || [];\nconst originalProduct = item.original_product || {};\nconst customerPreferences = item.customer_preferences || {};\nconst customerAllergens = item.customer_allergens || [];\n\n// Helper function: Calculate cosine similarity between two nutrition vectors\nfunction cosineSimilarity(vecA, vecB) {\n  if (!vecA || !vecB) return 0;\n  \n  const keys = Object.keys(vecA);\n  let dotProduct = 0;\n  let normA = 0;\n  let normB = 0;\n  \n  keys.forEach(key => {\n    const a = vecA[key] || 0;\n    const b = vecB[key] || 0;\n    dotProduct += a * b;\n    normA += a * a;\n    normB += b * b;\n  });\n  \n  if (normA === 0 || normB === 0) return 0;\n  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));\n}\n\n// Helper function: Calculate price delta percentage\nfunction calculatePriceDelta(originalPrice, substitutePrice) {\n  if (!originalPrice || originalPrice === 0) return 0;\n  return ((substitutePrice - originalPrice) / originalPrice) * 100;\n}\n\n// Helper function: Check allergen compatibility\nfunction isAllergenCompatible(productAllergens, customerAllergens) {\n  if (!customerAllergens || customerAllergens.length === 0) return true;\n  if (!productAllergens || productAllergens.length === 0) return true;\n  \n  return !productAllergens.some(allergen => \n    customerAllergens.includes(allergen)\n  );\n}\n\n// Helper function: Check customer preference history\nfunction getPreferenceScore(productId, preferences) {\n  if (!preferences || !preferences.purchased_products) return 0;\n  \n  const purchaseHistory = preferences.purchased_products || [];\n  const purchaseCount = purchaseHistory.filter(p => p === productId).length;\n  \n  // Normalize to 0-1 scale (assuming max 10 purchases)\n  return Math.min(purchaseCount / 10, 1);\n}\n\n// Score each substitute\nconst scoredSubstitutes = substitutes.map(substitute => {\n  // 1. Nutritional similarity score (0-1)\n  const nutritionScore = cosineSimilarity(\n    originalProduct.nutrition || {},\n    substitute.nutrition || {}\n  );\n  \n  // 2. Price delta percentage\n  const priceDelta = calculatePriceDelta(\n    originalProduct.price || 0,\n    substitute.price || 0\n  );\n  \n  // Price score: prefer similar or lower prices (0-1)\n  const priceScore = priceDelta <= 0 ? 1 : Math.max(0, 1 - (priceDelta / 50));\n  \n  // 3. Customer preference score (0-1)\n  const preferenceScore = getPreferenceScore(\n    substitute.product_id,\n    customerPreferences\n  );\n  \n  // 4. Allergen compatibility (boolean)\n  const allergenCompatible = isAllergenCompatible(\n    substitute.allergens || [],\n    customerAllergens\n  );\n  \n  // 5. Availability score (0-1)\n  const availabilityScore = substitute.stock_level > 0 ? \n    Math.min(substitute.stock_level / 100, 1) : 0;\n  \n  // Calculate combined score (weighted average)\n  // Weights: nutrition 30%, price 25%, preference 20%, availability 25%\n  const combinedScore = allergenCompatible ? \n    (nutritionScore * 0.30 + \n     priceScore * 0.25 + \n     preferenceScore * 0.20 + \n     availabilityScore * 0.25) : 0;\n  \n  return {\n    ...substitute,\n    scores: {\n      nutrition: Math.round(nutritionScore * 100) / 100,\n      price: Math.round(priceScore * 100) / 100,\n      preference: Math.round(preferenceScore * 100) / 100,\n      availability: Math.round(availabilityScore * 100) / 100,\n      combined: Math.round(combinedScore * 100) / 100\n    },\n    price_delta_percent: Math.round(priceDelta * 100) / 100,\n    allergen_compatible: allergenCompatible\n  };\n});\n\n// Filter by allergen compatibility and availability\nconst validSubstitutes = scoredSubstitutes.filter(s => \n  s.allergen_compatible && s.scores.availability > 0\n);\n\n// Sort by combined score (descending)\nvalidSubstitutes.sort((a, b) => b.scores.combined - a.scores.combined);\n\n// Take top 3 and assign ranking\nconst top3Substitutes = validSubstitutes.slice(0, 3).map((substitute, index) => {\n  let ranking;\n  if (index === 0) ranking = 'best';\n  else if (index === 1) ranking = 'better';\n  else ranking = 'good';\n  \n  return {\n    ...substitute,\n    ranking,\n    rank_position: index + 1\n  };\n});\n\n// Return enriched item with ranked substitutes\nreturn {\n  json: {\n    ...item,\n    ranked_substitutes: top3Substitutes,\n    substitutes_found: top3Substitutes.length,\n    original_product: originalProduct\n  }\n};"
+      },
+      "id": "9e0f85a7-4290-44c7-9978-0bc690f83553",
+      "name": "Score and Rank Substitution Candidates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1776,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "riskFlag",
+              "value": "={{ $json.riskLevel }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "top3Substitutes",
+              "value": "={{ $json.rankedSubstitutes }}",
+              "type": "array"
+            },
+            {
+              "id": "id-3",
+              "name": "recommendedAction",
+              "value": "CONTACT_CUSTOMER",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "4abfcdbf-d1b3-4461-ab26-bb3e8642552a",
+      "name": "Build Enriched Picking List with Substitutes",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "riskFlag",
+              "value": "LOW",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "top3Substitutes",
+              "value": "[]",
+              "type": "array"
+            },
+            {
+              "id": "id-3",
+              "name": "recommendedAction",
+              "value": "PROCEED",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "21f1e4af-5f90-4826-8470-a6d751f5626d",
+      "name": "Build Enriched Picking List (No Substitutes)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2000,
+        176
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "ff97c6c8-dfc7-4243-ab8d-8e5d94ba7e57",
+      "name": "Merge All Picking Lists",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2224,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "id-1",
+                    "leftValue": "={{ $json.recommendedAction }}",
+                    "rightValue": "CONTACT_CUSTOMER",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "id-2",
+                    "leftValue": "={{ $json.recommendedAction }}",
+                    "rightValue": "PROCEED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "id-3",
+                    "leftValue": "={{ $json.recommendedAction }}",
+                    "rightValue": "DEFER_TO_MANAGER",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4629ca18-e736-4a4c-a895-dc55a264aa87",
+      "name": "Route by Recommended Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        2448,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.workflow2WebhookUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "e261b723-e902-49cf-a0f7-eb5468d6d927",
+      "name": "Send to Workflow 2 (Proactive Customer Contact)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2672,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.arVrDashboardUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "a4a43973-f1c5-440e-99a8-ef45bc210a21",
+      "name": "Send to AR/VR Picking Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2672,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.managerDashboardUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b538d5a3-cfeb-4aaf-96bb-8149c3f402d2",
+      "name": "Send to Manager Dashboard",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2672,
+        176
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Every 15 Minutes (04:00-14:00 Finnish Time)": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Fetch Today's Picking Schedule from SAP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Current Inventory Levels",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Purchase Orders (90 Days)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Replacement Orders History",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Product Data JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Today's Picking Schedule from SAP": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Current Inventory Levels": {
+      "main": [
+        [
+          {
+            "node": "Merge All Data Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Data Sources": {
+      "main": [
+        [
+          {
+            "node": "Calculate Supplier Reliability Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Supplier Reliability Scores": {
+      "main": [
+        [
+          {
+            "node": "Prepare Features for Vertex AI Model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Features for Vertex AI Model": {
+      "main": [
+        [
+          {
+            "node": "Call Vertex AI Prediction API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Vertex AI Prediction API": {
+      "main": [
+        [
+          {
+            "node": "Parse Vertex AI Response and Flag Anomalies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Vertex AI Response and Flag Anomalies": {
+      "main": [
+        [
+          {
+            "node": "Check Stock-Out Risk Level",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Stock-Out Risk Level": {
+      "main": [
+        [
+          {
+            "node": "Query Zilliz Vector DB for Substitutes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Enriched Picking List (No Substitutes)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Zilliz Vector DB for Substitutes": {
+      "main": [
+        [
+          {
+            "node": "Score and Rank Substitution Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score and Rank Substitution Candidates": {
+      "main": [
+        [
+          {
+            "node": "Build Enriched Picking List with Substitutes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Enriched Picking List with Substitutes": {
+      "main": [
+        [
+          {
+            "node": "Merge All Picking Lists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Enriched Picking List (No Substitutes)": {
+      "main": [
+        [
+          {
+            "node": "Merge All Picking Lists",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All Picking Lists": {
+      "main": [
+        [
+          {
+            "node": "Route by Recommended Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Recommended Action": {
+      "main": [
+        [
+          {
+            "node": "Send to Workflow 2 (Proactive Customer Contact)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send to AR/VR Picking Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send to Manager Dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "2fd5d41e-09c3-4685-84e2-cd37a9dc28b0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dbdcbc61759b74ce7dbae0577ee323edf97ebe03ba4a51299e539cd2f3dbb193"
+  },
+  "id": "RTXsDDSoVmzl4trb",
+  "tags": []
+}

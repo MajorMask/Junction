@@ -1,0 +1,1245 @@
+{
+  "name": "Proactive Stock-Out Customer Communication and Substitution Management",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stock-out-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "06736562-ce72-4d11-8c98-72b17f1b7acb",
+      "name": "Stock-Out Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1120,
+        288
+      ],
+      "webhookId": "6309079d-ec6a-4400-b5fa-966e3d38d31c"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "crmApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__CRM API base URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "sapApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__SAP API base URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "elevenLabsApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__ElevenLabs API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "smsApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__SMS service API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "pushNotificationApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__Push notification API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "vertexAiApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__Vertex AI API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "zillizApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__Zilliz Vector DB API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "webappBaseUrl",
+              "value": "<__PLACEHOLDER_VALUE__Customer webapp base URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-9",
+              "name": "nightModeStartHour",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "id-10",
+              "name": "nightModeEndHour",
+              "value": 8,
+              "type": "number"
+            },
+            {
+              "id": "id-11",
+              "name": "responseTimeoutMinutes",
+              "value": 10,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "587fb8af-8561-4298-8435-0c7b2ea37a49",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -896,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.crmApiUrl }}/customers/{{ $json.customer_number }}/preferences",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__CRM API Bearer token__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b17c5a95-cd79-4875-92f5-ace7a661a81b",
+      "name": "Query CRM for Customer Preferences",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -672,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst config = $('Workflow Configuration').first().json;\nconst currentHour = new Date().getHours();\n\nreturn items.map(item => {\n  const customerPrefs = item.json;\n  const nightModeEnabled = customerPrefs.night_mode === true;\n  const isNightTime = currentHour >= config.nightModeStartHour && currentHour < config.nightModeEndHour;\n  const shouldDefer = nightModeEnabled && isNightTime && !['sms', 'email'].includes(customerPrefs.communication_channel);\n  \n  return {\n    json: {\n      ...item.json,\n      shouldDefer,\n      isNightTime,\n      currentHour,\n      deferUntilTime: shouldDefer ? `${config.nightModeEndHour}:00` : null\n    }\n  };\n});"
+      },
+      "id": "500bdebd-d25b-4abd-8098-9b9d003b70c5",
+      "name": "Check Night Mode and Time",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Check Night Mode and Time').item.json.shouldDefer }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "31da64e3-2950-4b41-870d-518588182c6e",
+      "name": "Should Defer Communication?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -224,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "specificTime",
+        "dateTime": "={{ $json.deferUntilTime }}"
+      },
+      "id": "c14fc15b-234e-4cbc-b460-4c071c248262",
+      "name": "Wait Until 08:00",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        216
+      ],
+      "webhookId": "76276b2b-c89d-4c5d-a054-3f94b287c762"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.communication_channel }}",
+                    "rightValue": "phone_call",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "phone_call"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.communication_channel }}",
+                    "rightValue": "sms",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sms"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.communication_channel }}",
+                    "rightValue": "email",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "email"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.communication_channel }}",
+                    "rightValue": "app_push",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "app_push"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b94bc50e-6a05-4645-a659-6548a50f08db",
+      "name": "Route by Communication Channel",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        224,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.elevenLabsApiUrl }}/outbound-call",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__ElevenLabs API key__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "phone_number",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "script",
+              "value": "={{ $json.callScript }}"
+            },
+            {
+              "name": "language",
+              "value": "={{ $json.language }}"
+            },
+            {
+              "name": "enable_intent_classification",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "074a2d25-3e46-4c61-9c34-1406b30453a5",
+      "name": "ElevenLabs Outbound Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst scripts = {\n  fi: (data) => `Hei, täällä Valio Aimo. Valitettavasti tuote ${data.product_name} (koodi ${data.product_code}) ei ole saatavilla toimitukseesi kello ${data.delivery_time}. Voimme tarjota korvaavia tuotteita: 1. ${data.substitute_1_name} - ${data.substitute_1_reason}, 2. ${data.substitute_2_name} - ${data.substitute_2_reason}, 3. ${data.substitute_3_name} - ${data.substitute_3_reason}. Haluatko hyväksyä jonkin korvaavan tuotteen? Sano numero 1, 2 tai 3, tai 'ei kiitos' jos et halua korvaavaa tuotetta.`,\n  sv: (data) => `Hej, här är Valio Aimo. Tyvärr är produkten ${data.product_name} (kod ${data.product_code}) inte tillgänglig för din leverans klockan ${data.delivery_time}. Vi kan erbjuda ersättningsprodukter: 1. ${data.substitute_1_name} - ${data.substitute_1_reason}, 2. ${data.substitute_2_name} - ${data.substitute_2_reason}, 3. ${data.substitute_3_name} - ${data.substitute_3_reason}. Vill du acceptera någon ersättningsprodukt? Säg nummer 1, 2 eller 3, eller 'nej tack' om du inte vill ha en ersättningsprodukt.`,\n  en: (data) => `Hello, this is Valio Aimo. Unfortunately, product ${data.product_name} (code ${data.product_code}) is not available for your delivery at ${data.delivery_time}. We can offer substitute products: 1. ${data.substitute_1_name} - ${data.substitute_1_reason}, 2. ${data.substitute_2_name} - ${data.substitute_2_reason}, 3. ${data.substitute_3_name} - ${data.substitute_3_reason}. Would you like to accept any substitute product? Say number 1, 2, or 3, or 'no thanks' if you don't want a substitute.`\n};\n\nreturn items.map(item => {\n  const language = item.json.language || 'fi';\n  const script = scripts[language](item.json);\n  \n  return {\n    json: {\n      ...item.json,\n      callScript: script,\n      language\n    }\n  };\n});"
+      },
+      "id": "4348d9b9-2adc-4800-a004-cffcca2d9ba1",
+      "name": "Generate Multilingual Call Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.smsApiUrl }}/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__SMS API key__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "to",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "message",
+              "value": "=Your order #{{ $json.order_number }} has an unavailable item: {{ $json.product_name }}. View alternatives: {{ $('Workflow Configuration').first().json.webappBaseUrl }}/substitutes?order={{ $json.order_number }}&product={{ $json.product_code }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b7dda281-7a98-422e-a3eb-6686553c32a9",
+      "name": "Send SMS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Product Unavailable - Order #{{ $json.order_number }}",
+        "message": "=<html>\n<body>\n  <h2>Product Unavailability Notice</h2>\n  <p>Dear Valued Customer,</p>\n  <p>We regret to inform you that a product in your order <strong>#{{ $json.order_number }}</strong> is currently unavailable.</p>\n  <p><strong>Unavailable Product:</strong> {{ $json.product_name }}</p>\n  <p>We have identified suitable substitutes for your consideration. Please click the link below to review and select your preferred alternative:</p>\n  <p><a href=\"{{ $json.webapp_url }}\" style=\"display: inline-block; padding: 12px 24px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px;\">View Substitute Options</a></p>\n  <p>If you have any questions or concerns, please don't hesitate to contact us.</p>\n  <p>Thank you for your understanding.</p>\n  <p>Best regards,<br>Your Customer Service Team</p>\n</body>\n</html>",
+        "options": {}
+      },
+      "id": "8c6b3eed-e338-4947-b340-e9e4b8eb4611",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        672,
+        384
+      ],
+      "webhookId": "c5c2954c-efd4-46e8-af3c-4e14e687f19a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.pushNotificationApiUrl }}/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Push notification API key__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_number }}"
+            },
+            {
+              "name": "title",
+              "value": "Product Unavailable"
+            },
+            {
+              "name": "message",
+              "value": "={{ 'Order ' + $json.order_number + ': Product ' + $json.product_name + ' (SKU: ' + $json.sku + ') is currently unavailable. Please review substitute options.' }}"
+            },
+            {
+              "name": "action_url",
+              "value": "={{ 'app://substitutes?order_id=' + $json.order_number + '&sku=' + $json.sku }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8b58d79f-89b7-4746-972b-45ea98e9f349",
+      "name": "Send App Push Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        672,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "limitWaitTime": true,
+        "resumeAmount": "={{ $('Workflow Configuration').first().json.responseTimeoutMinutes }}",
+        "resumeUnit": "minutes",
+        "options": {}
+      },
+      "id": "2f65e252-4b98-4aee-af71-749ea1201359",
+      "name": "Wait for Customer Response",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        288
+      ],
+      "webhookId": "61696f90-6d43-457a-8f11-ef5cb9cd468f"
+    },
+    {
+      "parameters": {},
+      "id": "96effc27-20a2-42a6-a1c0-dd4326c98b3d",
+      "name": "Merge All Channel Responses",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1120,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  const response = item.json;\n  let customerDecision = null;\n  let selectedSubstitute = null;\n  let responded = false;\n  \n  // Check if customer responded (webhook was called)\n  if (response.customer_response) {\n    responded = true;\n    \n    // Parse response based on channel\n    if (response.intent === 'ACCEPT_SUBSTITUTE_1' || response.choice === '1') {\n      customerDecision = 'accepted';\n      selectedSubstitute = response.substitute_1_code;\n    } else if (response.intent === 'ACCEPT_SUBSTITUTE_2' || response.choice === '2') {\n      customerDecision = 'accepted';\n      selectedSubstitute = response.substitute_2_code;\n    } else if (response.intent === 'ACCEPT_SUBSTITUTE_3' || response.choice === '3') {\n      customerDecision = 'accepted';\n      selectedSubstitute = response.substitute_3_code;\n    } else if (response.intent === 'DECLINE_ALL' || response.choice === 'decline') {\n      customerDecision = 'declined';\n    }\n  }\n  \n  return {\n    json: {\n      ...response,\n      customerDecision,\n      selectedSubstitute,\n      responded,\n      responseTimestamp: new Date().toISOString()\n    }\n  };\n});"
+      },
+      "id": "8f4348b7-7470-4c5d-94c7-d9aa33c97e5a",
+      "name": "Process Customer Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $('Process Customer Response').item.json.responded }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c655a8d8-aeb8-4264-be4a-fb455853dec5",
+      "name": "Customer Responded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1568,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.auto_accept_substitutions }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a3398cea-c370-43e0-95df-7f4f8ffc2e1b",
+      "name": "Auto-Accept Enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1792,
+        216
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  // Select substitute with highest score (substitute_1 is already highest from Workflow 1)\n  const selectedSubstitute = item.json.substitute_1_code;\n  const selectedSubstituteName = item.json.substitute_1_name;\n  \n  return {\n    json: {\n      ...item.json,\n      customerDecision: 'auto_accepted',\n      selectedSubstitute,\n      selectedSubstituteName,\n      autoAcceptTimestamp: new Date().toISOString()\n    }\n  };\n});"
+      },
+      "id": "cade31eb-3505-4fd9-90ae-d784f81cc389",
+      "name": "Auto-Select Best Substitute",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.smsApiUrl }}/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__SMS API key__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"We've replaced {{ $json.product_name }} with {{ $json.selectedSubstituteName }} in your order #{{ $json.order_number }}. Delivery as scheduled.\"\n}",
+        "options": {}
+      },
+      "id": "533ab62a-4d24-40f3-bb71-66e85106e7bd",
+      "name": "Send Auto-Accept Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2240,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "customerDecision",
+              "value": "not_reached",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "requiresPostDeliveryRemediation",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "id-3",
+              "name": "notReachedTimestamp",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "11f55bef-969b-43c3-8ae4-a4889a8b07fe",
+      "name": "Mark as Customer Not Reached",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2016,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "3ff32cd4-3b54-4130-9bc1-305f141ed169",
+      "name": "Merge All Outcomes",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2464,
+        296
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/orders/{{ $json.order_number }}/lines/{{ $json.order_line_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__SAP API Bearer token__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product_code",
+              "value": "={{ $json.selectedSubstitute || $json.product_code }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $json.customerDecision === 'accepted' ? 'confirmed' : ($json.customerDecision === 'rejected' ? 'cancelled' : 'pending') }}"
+            },
+            {
+              "name": "customer_decision",
+              "value": "={{ $json.customerDecision }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a91951b7-486b-4803-b4b1-3cfb283aa8c8",
+      "name": "Update SAP Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2688,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.crmApiUrl }}/interactions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__CRM API Bearer token__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customer_number",
+              "value": "={{ $json.customer_number }}"
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.order_number }}"
+            },
+            {
+              "name": "interaction_type",
+              "value": "stock_out_communication"
+            },
+            {
+              "name": "channel",
+              "value": "={{ $json.communication_channel }}"
+            },
+            {
+              "name": "customer_decision",
+              "value": "={{ $json.customer_decision }}"
+            },
+            {
+              "name": "selected_substitute",
+              "value": "={{ $json.selected_substitute }}"
+            },
+            {
+              "name": "response_timestamp",
+              "value": "={{ $json.response_timestamp }}"
+            },
+            {
+              "name": "call_transcript",
+              "value": "={{ $json.call_transcript }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ce565c41-1d0c-4173-8299-5be7aac657a7",
+      "name": "Log to CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2912,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.vertexAiApiUrl }}/training-data",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Vertex AI API key__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "original_product",
+              "value": "={{ $json.original_product }}"
+            },
+            {
+              "name": "substitute_offered",
+              "value": "={{ $json.substitute_offered }}"
+            },
+            {
+              "name": "customer_decision",
+              "value": "={{ $json.customer_decision }}"
+            },
+            {
+              "name": "customer_preferences",
+              "value": "={{ $json.customer_preferences }}"
+            },
+            {
+              "name": "context",
+              "value": "={{ $json.context }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c961c3c8-5171-425a-b247-c8cb5d99f1c4",
+      "name": "Send to Vertex AI Training",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3136,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.zillizApiUrl }}/collections/product-similarity/update",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Zilliz API key__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "product_pair",
+              "value": "={{ { original: $('Stock-Out Alert Webhook').first().json.productCode, substitute: $('Merge All Outcomes').first().json.substituteCode } }}"
+            },
+            {
+              "name": "similarity_weight_adjustment",
+              "value": "={{ $('Merge All Outcomes').first().json.customerAccepted ? 0.1 : -0.05 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0975c8fa-b3bb-4b46-b8c5-e1f99f13003e",
+      "name": "Update Zilliz Vector DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3360,
+        312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__Workflow 3 webhook URL__>",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "={{ $('Stock-Out Alert Webhook').item.json.order_number }}"
+            },
+            {
+              "name": "customer_number",
+              "value": "={{ $('Stock-Out Alert Webhook').item.json.customer_number }}"
+            },
+            {
+              "name": "product_code",
+              "value": "={{ $('Stock-Out Alert Webhook').item.json.product_code }}"
+            },
+            {
+              "name": "reason",
+              "value": "customer_not_reached"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0c035ee5-1870-4ed6-a315-455c3370830e",
+      "name": "Trigger Post-Delivery Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2240,
+        312
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Stock-Out Alert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Query CRM for Customer Preferences",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query CRM for Customer Preferences": {
+      "main": [
+        [
+          {
+            "node": "Check Night Mode and Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Night Mode and Time": {
+      "main": [
+        [
+          {
+            "node": "Should Defer Communication?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Defer Communication?": {
+      "main": [
+        [
+          {
+            "node": "Wait Until 08:00",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route by Communication Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Until 08:00": {
+      "main": [
+        [
+          {
+            "node": "Route by Communication Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Communication Channel": {
+      "main": [
+        [
+          {
+            "node": "Generate Multilingual Call Script",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send App Push Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Multilingual Call Script": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs Outbound Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs Outbound Call": {
+      "main": [
+        [
+          {
+            "node": "Wait for Customer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS": {
+      "main": [
+        [
+          {
+            "node": "Wait for Customer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Wait for Customer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send App Push Notification": {
+      "main": [
+        [
+          {
+            "node": "Wait for Customer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Customer Response": {
+      "main": [
+        [
+          {
+            "node": "Merge All Channel Responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge All Channel Responses": {
+      "main": [
+        [
+          {
+            "node": "Process Customer Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Customer Response": {
+      "main": [
+        [
+          {
+            "node": "Customer Responded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Responded?": {
+      "main": [
+        [
+          {
+            "node": "Merge All Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Auto-Accept Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Accept Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Auto-Select Best Substitute",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark as Customer Not Reached",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Select Best Substitute": {
+      "main": [
+        [
+          {
+            "node": "Send Auto-Accept Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Auto-Accept Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Merge All Outcomes",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Mark as Customer Not Reached": {
+      "main": [
+        [
+          {
+            "node": "Trigger Post-Delivery Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Post-Delivery Workflow": {
+      "main": [
+        [
+          {
+            "node": "Merge All Outcomes",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge All Outcomes": {
+      "main": [
+        [
+          {
+            "node": "Update SAP Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update SAP Order": {
+      "main": [
+        [
+          {
+            "node": "Log to CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to CRM": {
+      "main": [
+        [
+          {
+            "node": "Send to Vertex AI Training",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Vertex AI Training": {
+      "main": [
+        [
+          {
+            "node": "Update Zilliz Vector DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1db87059-9316-47db-ba37-a8e2776adbb0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dbdcbc61759b74ce7dbae0577ee323edf97ebe03ba4a51299e539cd2f3dbb193"
+  },
+  "id": "BujwFY60xvd485ab",
+  "tags": []
+}

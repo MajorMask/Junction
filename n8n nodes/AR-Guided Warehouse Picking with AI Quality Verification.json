@@ -1,0 +1,1884 @@
+{
+  "name": "AR-Guided Warehouse Picking with AI Quality Verification",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ar-glasses-event",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "17a551e0-508f-4881-81d4-894edea8c7d1",
+      "name": "AR Glasses Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3072,
+        972
+      ],
+      "webhookId": "16d8c8de-fec8-43be-aa00-897849bbd0d5"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "sapApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__SAP API Base URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "sapAuthToken",
+              "value": "<__PLACEHOLDER_VALUE__SAP Authorization Token__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "vertexProjectId",
+              "value": "<__PLACEHOLDER_VALUE__Google Vertex AI Project ID__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "vertexLocation",
+              "value": "<__PLACEHOLDER_VALUE__Google Vertex AI Location__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "aiTrainingEndpoint",
+              "value": "<__PLACEHOLDER_VALUE__AI Training Data Endpoint URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "pickerStatsDbUrl",
+              "value": "<__PLACEHOLDER_VALUE__Picker Stats Database URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "workflow2WebhookUrl",
+              "value": "<__PLACEHOLDER_VALUE__Workflow 2 Webhook URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "shortageThresholdPercent",
+              "value": 5,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "2dba43a0-44f5-4884-9e00-b3a5323f9db5",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2848,
+        972
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "location_request",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "location_request"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "barcode_scan",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "barcode_scan"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "voice_quantity",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "voice_quantity"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "photo_upload",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "photo_upload"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "incoming_delivery",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "incoming_delivery"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5f5b0f57-7bf1-4b8c-b7dc-7acf0537dafd",
+      "name": "Route by Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -2624,
+        924
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/products/{{ $json.product_code }}/location",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d4db71ad-b4f8-4ddd-b293-227c3f62b3ff",
+      "name": "Get Product Location from SAP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -128,
+        1236
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ar_display_type",
+              "value": "waypoint",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "aisle",
+              "value": "={{ $json.storage_location.aisle }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "shelf",
+              "value": "={{ $json.storage_location.shelf }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "product_image_url",
+              "value": "={{ $json.product_image }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "expected_quantity",
+              "value": "={{ $json.quantity }}",
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "expiry_date",
+              "value": "={{ $json.expiry_date }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "message",
+              "value": "=Navigate to aisle {{ $json.storage_location.aisle }}, shelf {{ $json.storage_location.shelf }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "946ca0cd-4d54-4614-a80d-372e6811cb1f",
+      "name": "Format AR Waypoint Display",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        1236
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/transfer-orders/{{ $json.transfer_order_id }}/validate-barcode/{{ $json.scanned_barcode }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "547902d9-450a-464d-866f-b66a559f1609",
+      "name": "Validate Barcode Against Transfer Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -352,
+        1548
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.barcode_match }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "699cd027-4f31-4f9f-ba31-04d5a686c720",
+      "name": "Barcode Match Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -128,
+        1548
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ar_display_type",
+              "value": "alert",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "alert_type",
+              "value": "error",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "audio_message",
+              "value": "Väärä tuote! Skannaa uudelleen.",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "visual_message",
+              "value": "Wrong Product! Scan Again",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "expected_product",
+              "value": "={{ $json.expected_product_code }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "scanned_product",
+              "value": "={{ $json.scanned_barcode }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "986f4b97-14db-425d-b35e-39194c87444e",
+      "name": "Barcode Mismatch Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        1428
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ar_display_type",
+              "value": "confirmation",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "visual_message",
+              "value": "✓ Correct Product",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "audio_message",
+              "value": "Oikea tuote vahvistettu",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "next_step",
+              "value": "quantity_confirmation",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "9348dd0b-0702-4bd6-b1cf-109862d89e11",
+      "name": "Barcode Match Confirmation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        1620
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Parse Finnish voice transcription to extract quantity\nconst voiceText = $input.item.json.voice_transcription || '';\nconst orderedQty = $input.item.json.ordered_qty || 0;\n\n// Extract number from Finnish text like 'Otettu 12 pakettia'\n// Pattern matches numbers in various Finnish quantity phrases\nconst match = voiceText.match(/\\d+/);\nconst pickedQty = match ? parseInt(match[0], 10) : 0;\n\nreturn {\n  picked_qty: pickedQty,\n  ordered_qty: orderedQty,\n  voice_text: voiceText,\n  match_status: pickedQty === orderedQty ? 'exact' : (pickedQty < orderedQty ? 'shortage' : 'overpick')\n};"
+      },
+      "id": "32d87c83-efd1-4787-83c0-6e422379e730",
+      "name": "Parse Voice Quantity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        972
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.picked_qty }}",
+              "rightValue": "={{ $json.ordered_qty }}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2e7d0c89-23d1-4c1e-9057-88f906f31feb",
+      "name": "Quantity Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -576,
+        972
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ar_display_type",
+              "value": "photo_request",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "audio_message",
+              "value": "Ota kuva hyllystä vahvistaaksesi puutteen",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "visual_message",
+              "value": "Photo Required: Confirm Shortage",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "photo_type",
+              "value": "shelf_verification",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "b90920ee-e362-4ac9-9c8a-0d4f960e38f2",
+      "name": "Request Shelf Photo",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        852
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Analyze the uploaded shelf/crate photo. Count visible product units, extract lot numbers and expiry dates using OCR, detect any damage (torn packaging, spills, contamination). Return structured JSON with: unit_count (integer), lot_numbers (array), expiry_dates (array), damage_detected (boolean), damage_description (string), shortage_confirmed (boolean).",
+        "options": {}
+      },
+      "id": "3f48f657-459e-43ae-a5cf-0f850a4186c0",
+      "name": "AI Vision Analysis Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -2400,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.vertexProjectId }}"
+        },
+        "modelName": "gemini-1.5-pro-002",
+        "options": {}
+      },
+      "id": "bb9ae56f-b82a-44b1-a20a-6e088f8e6205",
+      "name": "Google Vertex Vision Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        -2328,
+        352
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.shortage_confirmed }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7718279c-8303-4422-a4c7-a6faa8a17b60",
+      "name": "Shortage Confirmed Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2048,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/products/{{ $json.product_code }}/alternate-locations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "91594320-9bdd-4152-b05b-1b7ff914f2a0",
+      "name": "Check Alternate Storage Locations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1824,
+        56
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.alternate_locations }}",
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "id-2",
+              "leftValue": "={{ $json.total_available_qty }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6bb067c0-d8fc-43e5-87f2-ca2f6751cb94",
+      "name": "Alternate Stock Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1600,
+        56
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "ar_display_type",
+              "value": "redirect",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "new_aisle",
+              "value": "={{ $json.alternate_locations[0].aisle }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "new_shelf",
+              "value": "={{ $json.alternate_locations[0].shelf }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "audio_message",
+              "value": "Siirry vaihtoehtoiseen sijaintiin",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "visual_message",
+              "value": "=🔄 Redirect to Aisle {{ $json.alternate_locations[0].aisle }}, Shelf {{ $json.alternate_locations[0].shelf }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "20fe2b3f-7b96-49df-aa8d-9c86f0b4c702",
+      "name": "Redirect to Alternate Location",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        -112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.aiTrainingEndpoint }}/predictions/stockout/{{ $json.product_code }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c97b822e-7151-436f-8b5e-28063ead3fc8",
+      "name": "Get Stock-Out Prediction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1376,
+        152
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.stockout_probability }}",
+              "rightValue": "0.7",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e5ed0d9b-6ab1-460d-bf6f-871f9dc17bca",
+      "name": "Prediction Accuracy Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1088,
+        152
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "prediction_status",
+              "value": "accurate",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "prediction_type",
+              "value": "stockout",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "actual_outcome",
+              "value": "shortage_confirmed",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "4b08dd72-d55a-43a4-8edb-50d452e97517",
+      "name": "Log Accurate Prediction",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -128,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "supplier_issue_type",
+              "value": "unreliable_delivery",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "prediction_status",
+              "value": "inaccurate",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "flag_reason",
+              "value": "Unexpected shortage - supplier reliability issue",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "0a33bc1d-12f5-4181-acf3-9b56b3951228",
+      "name": "Flag Unreliable Supplier",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -800,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/suppliers/{{ $json.supplier_id }}/reliability-score",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "penalty_type",
+              "value": "unexpected_shortage"
+            },
+            {
+              "name": "product_code",
+              "value": "={{ $json.product_code }}"
+            },
+            {
+              "name": "shortage_qty",
+              "value": "={{ $json.shortage_qty }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "28115704-8691-4262-8113-3092f1b1815c",
+      "name": "Update Supplier Reliability Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -576,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Slack Channel ID for Manager Alerts__>"
+        },
+        "text": "=⚠️ Supplier Reliability Alert: Unexpected shortage detected for product {{ $json.product_code }}. Supplier: {{ $json.supplier_name }}. Shortage: {{ $json.shortage_qty }} units.",
+        "otherOptions": {}
+      },
+      "id": "9b8a3732-d5dd-4908-80d2-d65542895016",
+      "name": "Alert Manager via Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -352,
+        224
+      ],
+      "webhookId": "57a02561-483b-436a-bc8a-245548f23691"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.workflow2WebhookUrl }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "trigger_type",
+              "value": "shortage_detected"
+            },
+            {
+              "name": "product_code",
+              "value": "={{ $json.product_code }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "shortage_qty",
+              "value": "={{ $json.shortage_qty }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "05764ef6-792a-4782-89f3-e049fa09714a",
+      "name": "Trigger Proactive Contact Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -128,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/purchase-orders/{{ $json.purchase_order_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b31aae0c-3ca5-4502-9b6a-b3bc2312f7fb",
+      "name": "Validate Incoming Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1376,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Analyze the uploaded pallet/crate photo from incoming delivery. Count the number of packages/units visible. Return structured JSON with: package_count (integer), confidence_score (float 0-1), visibility_issues (boolean), notes (string).",
+        "options": {}
+      },
+      "id": "c8d539a5-2ae0-4824-9d8f-69fa933c3ec6",
+      "name": "AI Package Counter",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1152,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.vertexProjectId }}"
+        },
+        "modelName": "gemini-1.5-pro-002",
+        "options": {}
+      },
+      "id": "5488d90c-dd69-461b-91a3-638ceb4abcf9",
+      "name": "Google Vertex Counter Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        -1080,
+        880
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ (($('AI Package Counter').item.json.ordered_qty - $('AI Package Counter').item.json.package_count) / $('AI Package Counter').item.json.ordered_qty) * 100 }}",
+              "rightValue": "={{ $('Workflow Configuration').first().json.shortageThresholdPercent }}",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bc6b9ae9-f29a-48e2-8b7a-622b4aa04440",
+      "name": "Supplier Short Delivery Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -800,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/purchase-orders/{{ $json.purchase_order_id }}/flag-shortage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "flag_type",
+              "value": "supplier_short_delivery"
+            },
+            {
+              "name": "received_qty",
+              "value": "={{ $json.package_count }}"
+            },
+            {
+              "name": "ordered_qty",
+              "value": "={{ $json.ordered_qty }}"
+            },
+            {
+              "name": "shortage_percent",
+              "value": "={{ ($json.ordered_qty - $json.package_count) / $json.ordered_qty * 100 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "415bdcff-8051-4411-98b1-fb724adfe2ca",
+      "name": "Flag Supplier Short Delivery in SAP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -576,
+        564
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/suppliers/{{ $json.supplier_id }}/penalty",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "penalty_type",
+              "value": "short_delivery"
+            },
+            {
+              "name": "purchase_order_id",
+              "value": "={{ $json.purchase_order_id }}"
+            },
+            {
+              "name": "shortage_qty",
+              "value": "={{ $json.ordered_qty - $json.package_count }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ac93a4b5-8e7f-49f6-9569-f14e9a6d07e9",
+      "name": "Update Supplier Penalty Score",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -352,
+        564
+      ]
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Slack Channel ID for Manager Alerts__>"
+        },
+        "text": "=🚨 Supplier Short Delivery: PO {{ $json.purchase_order_id }} from {{ $json.supplier_name }}. Ordered: {{ $json.ordered_qty }}, Received: {{ $json.package_count }}. Shortage: {{ $json.ordered_qty - $json.package_count }} units ({{ ($json.ordered_qty - $json.package_count) / $json.ordered_qty * 100 }}%)",
+        "otherOptions": {}
+      },
+      "id": "134f61f5-b38d-4e0c-a59e-a0887212b94c",
+      "name": "Alert Manager Supplier Issue",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        -128,
+        564
+      ],
+      "webhookId": "ca9b5642-46cf-4aad-a91f-56a768411b91"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.aiTrainingEndpoint }}/exceptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}"
+            },
+            {
+              "name": "eventType",
+              "value": "={{ $('AR Glasses Webhook').item.json.body.eventType }}"
+            },
+            {
+              "name": "workerId",
+              "value": "={{ $('AR Glasses Webhook').item.json.body.workerId }}"
+            },
+            {
+              "name": "productId",
+              "value": "={{ $('AR Glasses Webhook').item.json.body.productId }}"
+            },
+            {
+              "name": "exceptionType",
+              "value": "={{ $('Shortage Confirmed Check').item.json.exceptionType || $('Supplier Short Delivery Check').item.json.exceptionType || 'general' }}"
+            },
+            {
+              "name": "predictionAccuracy",
+              "value": "={{ $('Prediction Accuracy Check').item.json.accurate }}"
+            },
+            {
+              "name": "actualQuantity",
+              "value": "={{ $('AI Vision Analysis Agent').item.json.detectedQuantity || $('AI Package Counter').item.json.packageCount }}"
+            },
+            {
+              "name": "expectedQuantity",
+              "value": "={{ $('AR Glasses Webhook').item.json.body.expectedQuantity }}"
+            },
+            {
+              "name": "supplierInfo",
+              "value": "={{ $('Flag Unreliable Supplier').item.json.supplierId || $('Flag Supplier Short Delivery in SAP').item.json.supplierId }}"
+            },
+            {
+              "name": "imageData",
+              "value": "={{ $('AR Glasses Webhook').item.json.body.imageBase64 }}"
+            },
+            {
+              "name": "aiModelUsed",
+              "value": "={{ $('AI Vision Analysis Agent').item.json.modelVersion || $('AI Package Counter').item.json.modelVersion }}"
+            },
+            {
+              "name": "resolutionAction",
+              "value": "={{ $('Redirect to Alternate Location').item.json.action || 'logged' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4cc89795-433f-4a02-ade8-0bd68df4ccb8",
+      "name": "Log Exception for AI Training",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        96,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "pick_time_seconds",
+              "value": "={{ $now.diff($json.pick_start_time, 'seconds') }}",
+              "type": "number"
+            },
+            {
+              "id": "id-2",
+              "name": "accuracy_score",
+              "value": 100,
+              "type": "number"
+            },
+            {
+              "id": "id-3",
+              "name": "efficiency_bonus",
+              "value": "={{ $json.pick_time_seconds < $json.average_pick_time ? 10 : 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "id-4",
+              "name": "total_points",
+              "value": "={{ 100 + $json.efficiency_bonus }}",
+              "type": "number"
+            },
+            {
+              "id": "id-5",
+              "name": "achievement_unlocked",
+              "value": "={{ $json.total_picks_today >= 100 ? 'Speed Demon' : null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "c0f5eef4-77a9-417e-96b2-eaa08803aaf2",
+      "name": "Calculate Gamification Stats",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        1044
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.pickerStatsDbUrl }}/pickers/={{ $json.picker_id }}/stats",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "picker_id",
+              "value": "={{ $json.picker_id }}"
+            },
+            {
+              "name": "pick_time",
+              "value": "={{ $json.pick_time_seconds }}"
+            },
+            {
+              "name": "accuracy",
+              "value": "={{ $json.accuracy_score }}"
+            },
+            {
+              "name": "points_earned",
+              "value": "={{ $json.total_points }}"
+            },
+            {
+              "name": "achievement",
+              "value": "={{ $json.achievement_unlocked }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1344a94f-b760-4f0f-bb8f-2b48a90f1f26",
+      "name": "Update Picker Stats in Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -128,
+        1044
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/transfer-orders/{{ $json.transfer_order_id }}/confirm-picking",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('Workflow Configuration').first().json.sapAuthToken }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "picked_qty",
+              "value": "={{ $json.picked_qty }}"
+            },
+            {
+              "name": "picker_id",
+              "value": "={{ $json.picker_id }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bd0ee69e-d3c4-450b-96dc-85dca74cee71",
+      "name": "Confirm Picking in SAP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        96,
+        1044
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "7b380755-0d26-4e97-8ff7-af296d88ebf5",
+      "name": "Send Response to AR Glasses",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        320,
+        852
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "AR Glasses Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Route by Event Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Event Type": {
+      "main": [
+        [
+          {
+            "node": "Get Product Location from SAP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Barcode Against Transfer Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Parse Voice Quantity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Vision Analysis Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Incoming Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Product Location from SAP": {
+      "main": [
+        [
+          {
+            "node": "Format AR Waypoint Display",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format AR Waypoint Display": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Barcode Against Transfer Order": {
+      "main": [
+        [
+          {
+            "node": "Barcode Match Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Barcode Match Check": {
+      "main": [
+        [
+          {
+            "node": "Barcode Mismatch Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Barcode Match Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Barcode Mismatch Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Barcode Match Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Voice Quantity": {
+      "main": [
+        [
+          {
+            "node": "Quantity Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quantity Check": {
+      "main": [
+        [
+          {
+            "node": "Request Shelf Photo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Calculate Gamification Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Shelf Photo": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Vision Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Vision Analysis Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Vision Analysis Agent": {
+      "main": [
+        [
+          {
+            "node": "Shortage Confirmed Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shortage Confirmed Check": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check Alternate Storage Locations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Alternate Storage Locations": {
+      "main": [
+        [
+          {
+            "node": "Alternate Stock Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alternate Stock Available": {
+      "main": [
+        [
+          {
+            "node": "Get Stock-Out Prediction",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redirect to Alternate Location",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redirect to Alternate Location": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Stock-Out Prediction": {
+      "main": [
+        [
+          {
+            "node": "Prediction Accuracy Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prediction Accuracy Check": {
+      "main": [
+        [
+          {
+            "node": "Flag Unreliable Supplier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Accurate Prediction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Accurate Prediction": {
+      "main": [
+        [
+          {
+            "node": "Log Exception for AI Training",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Unreliable Supplier": {
+      "main": [
+        [
+          {
+            "node": "Update Supplier Reliability Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Supplier Reliability Score": {
+      "main": [
+        [
+          {
+            "node": "Alert Manager via Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Manager via Slack": {
+      "main": [
+        [
+          {
+            "node": "Trigger Proactive Contact Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Proactive Contact Workflow": {
+      "main": [
+        [
+          {
+            "node": "Log Exception for AI Training",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Incoming Delivery": {
+      "main": [
+        [
+          {
+            "node": "AI Package Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Vertex Counter Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Package Counter",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Package Counter": {
+      "main": [
+        [
+          {
+            "node": "Supplier Short Delivery Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supplier Short Delivery Check": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag Supplier Short Delivery in SAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag Supplier Short Delivery in SAP": {
+      "main": [
+        [
+          {
+            "node": "Update Supplier Penalty Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Supplier Penalty Score": {
+      "main": [
+        [
+          {
+            "node": "Alert Manager Supplier Issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Manager Supplier Issue": {
+      "main": [
+        [
+          {
+            "node": "Log Exception for AI Training",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Gamification Stats": {
+      "main": [
+        [
+          {
+            "node": "Update Picker Stats in Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Picker Stats in Database": {
+      "main": [
+        [
+          {
+            "node": "Confirm Picking in SAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Picking in SAP": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Exception for AI Training": {
+      "main": [
+        [
+          {
+            "node": "Send Response to AR Glasses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f25e158f-b50b-4ec9-9693-3358f8377ed6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dbdcbc61759b74ce7dbae0577ee323edf97ebe03ba4a51299e539cd2f3dbb193"
+  },
+  "id": "9C6ujWOWiUi6T9mm",
+  "tags": []
+}

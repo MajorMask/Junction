@@ -1,0 +1,1250 @@
+{
+  "name": "Multimodal Post-Delivery Claims and Remediation Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "post-delivery-claim",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "06a70d23-ce68-4e47-888d-91d7af9e4d16",
+      "name": "Inbound Claim Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1840,
+        124
+      ],
+      "webhookId": "6c6acd56-ea0b-48a6-a255-252cc441ae41"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "sapApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__SAP API Base URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "logisticsApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__Logistics System API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "pushNotificationApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__Push Notification Service URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "csvStorageUrl",
+              "value": "<__PLACEHOLDER_VALUE__CSV Storage API URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "highConfidenceThreshold",
+              "value": 0.9,
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "lowConfidenceThreshold",
+              "value": 0.7,
+              "type": "number"
+            },
+            {
+              "id": "id-7",
+              "name": "sameDayDeliveryCutoff",
+              "value": "18:00",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "6601f926-0acf-462a-b2dd-f54b2088fe88",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1616,
+        124
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.source }}",
+                    "rightValue": "sap",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "SAP_SHORTAGE"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.source }}",
+                    "rightValue": "customer",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "CUSTOMER_REPORT"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.body.source }}",
+                    "rightValue": "phone",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "PHONE_CALL"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "0156cc25-0e36-4c5d-8df6-41f453b627ef",
+      "name": "Route by Claim Source",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -1392,
+        92
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/orders/{{ $json.body.order_number }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__SAP API Authorization Token__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0bf9eb8b-7863-4a98-be04-1802a863c980",
+      "name": "Fetch Order from SAP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1168,
+        124
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.delivered_qty }}",
+              "rightValue": "={{ $json.ordered_qty }}",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "8895e67c-2469-4dfe-a451-a6550aa97860",
+      "name": "Check Delivery Quantity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -944,
+        124
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "shortage_qty",
+              "value": "={{ $json.ordered_qty - $json.delivered_qty }}",
+              "type": "number"
+            },
+            {
+              "id": "id-2",
+              "name": "shortage_type",
+              "value": "partial",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "claim_source",
+              "value": "={{ $json.body.source }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bfaa0485-d52f-4c0c-a269-b2138b892b8b",
+      "name": "Calculate Shortage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -496,
+        -72
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o"
+        },
+        "text": "=Analyze this image of a delivery crate. Count the visible products and compare to the expected quantity. Expected products: {{ $json.body.expected_products }}. Return a JSON with: {\"visible_count\": number, \"expected_count\": number, \"confidence\": 0-1, \"discrepancy_detected\": boolean, \"notes\": string}",
+        "imageUrls": "={{ $json.body.image_url || $json.body.image_data }}",
+        "options": {}
+      },
+      "id": "308cc25d-2ff0-4a67-b152-b19882b69786",
+      "name": "Analyze Image Evidence",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        224
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Qcu3IYU7OavLTHFK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.confidence }}",
+              "rightValue": "={{ $('Workflow Configuration').first().json.highConfidenceThreshold }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2b35bd66-e2b6-4e09-aa99-8fd29f265e5c",
+      "name": "Check AI Confidence",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -496,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "remediation_options",
+              "value": "[\"same_day_delivery\", \"next_day_priority\", \"credit_note\", \"substitute_product\"]",
+              "type": "array"
+            },
+            {
+              "id": "id-2",
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "order_number",
+              "value": "={{ $json.order_number }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "shortage_details",
+              "value": "={{ $json.shortage_qty || $json.visible_count }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "claim_approved",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ad092ed7-7e83-4135-afa1-fc6629f70582",
+      "name": "Prepare Remediation Options",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are Valio Aimo customer service agent. A customer has reported a delivery discrepancy. Order: {{ $json.order_number }}, Shortage: {{ $json.shortage_details }} items. Present remediation options in Finnish: 1) Same-day delivery (if before 18:00), 2) Next-day priority delivery, 3) Credit note, 4) Substitute product. Ask customer preference and confirm their choice. Be empathetic and apologetic.",
+        "options": {
+          "systemMessage": "You are a helpful Finnish customer service agent for Valio Aimo dairy delivery service. Always respond in Finnish. Be professional, empathetic, and solution-oriented."
+        }
+      },
+      "id": "ddba9baa-5072-43d7-902c-9202acad1829",
+      "name": "Customer Communication Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -48,
+        -128
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "<__PLACEHOLDER_VALUE__Google Cloud Project ID__>"
+        },
+        "modelName": "gemini-1.5-pro",
+        "options": {}
+      },
+      "id": "dca71d3d-df62-43d3-93f8-ca6d8e6c224f",
+      "name": "Vertex AI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleVertex",
+      "typeVersion": 1,
+      "position": [
+        24,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/orders/replacement",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__SAP API Authorization Token__>"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "original_order_number",
+              "value": "={{ $json.order_number }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "replacement_qty",
+              "value": "={{ $json.shortage_details }}"
+            },
+            {
+              "name": "remediation_type",
+              "value": "={{ $json.customer_choice }}"
+            },
+            {
+              "name": "priority",
+              "value": "high"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d2b96728-3559-4fb2-a5d0-83d7390ad1c7",
+      "name": "Create Replacement Order in SAP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        304,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.logisticsApiUrl }}/routes/active?customer_id={{ $json.customer_id }}&date={{ $now.toFormat('yyyy-MM-dd') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Logistics API Authorization Token__>"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5a238484-0a42-48dd-9c2f-df1422766394",
+      "name": "Check Active Route Availability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        528,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.route_available }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "id-2",
+              "leftValue": "={{ $now.toFormat('HH:mm') }}",
+              "rightValue": "={{ $('Workflow Configuration').first().json.sameDayDeliveryCutoff }}",
+              "operator": {
+                "type": "string",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "02254eca-1b9e-46aa-96cf-3fca64ca7b3a",
+      "name": "Route Available Today?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        752,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.logisticsApiUrl }}/routes/{{ $json.route_id }}/add-stop",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Logistics API Authorization Token__>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "={{ $json.replacement_order_number }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "stop_type",
+              "value": "remediation"
+            },
+            {
+              "name": "priority",
+              "value": "high"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "25c43bc0-8440-44c8-884b-17bf61d682c5",
+      "name": "Add to Active Route",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        976,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.logisticsApiUrl }}/routes/schedule",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Logistics API Authorization Token__>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "={{ $json.replacement_order_number }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "delivery_date",
+              "value": "={{ $now.plus({days: 1}).toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "priority",
+              "value": "high"
+            },
+            {
+              "name": "route_type",
+              "value": "remediation"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cf83c56a-1c1c-406d-b00d-207b7c24bea6",
+      "name": "Schedule Next-Day Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        976,
+        72
+      ]
+    },
+    {
+      "parameters": {
+        "from": "<__PLACEHOLDER_VALUE__Twilio Phone Number__>",
+        "to": "={{ $json.customer_phone }}",
+        "message": "=Pahoittelemme puutetta tilauksessasi {{ $json.order_number }}. Toimitus täydennetään {{ $json.delivery_date }} klo {{ $json.delivery_time }}. -Valio Aimo",
+        "options": {}
+      },
+      "id": "a4286b22-3622-4980-9028-fefe75a1ff0e",
+      "name": "Send SMS Notification",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1424,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.pushNotificationApiUrl }}/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Push Notification API Key__>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "title",
+              "value": "Tilaus täydennetään"
+            },
+            {
+              "name": "message",
+              "value": "=Pahoittelemme puutetta. Toimitus {{ $json.delivery_date }} klo {{ $json.delivery_time }}."
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.order_number }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "35a1e7ec-e5ff-4e15-b76c-d652f27565d9",
+      "name": "Send App Push Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1424,
+        72
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "18670302-c3c1-4199-812c-1f470e5c9ed1",
+      "name": "Merge Notification Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1648,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "limitWaitTime": true,
+        "resumeAmount": 24,
+        "options": {}
+      },
+      "id": "9dd0aa10-e35a-49ff-a7a7-f0b92a9dc7b2",
+      "name": "Wait 24h for Follow-up",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1872,
+        -24
+      ],
+      "webhookId": "1ca77e2b-a6d0-4b2b-8d99-7af99e612c76"
+    },
+    {
+      "parameters": {
+        "from": "<__PLACEHOLDER_VALUE__Twilio Phone Number__>",
+        "to": "={{ $json.customer_phone }}",
+        "message": "=Hei! Onko tilauksesi {{ $json.order_number }} nyt täydellinen? Vastaa 1-10 (1=tyytymätön, 10=erittäin tyytyväinen). -Valio Aimo",
+        "options": {}
+      },
+      "id": "250f615e-39c7-409c-9658-963d26c2625d",
+      "name": "Send Follow-up SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.csvStorageUrl }}/valio_aimo_replacement_orders_junction_2025.csv/append",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__CSV Storage API Key__>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "={{ $json.order_number }}"
+            },
+            {
+              "name": "replacement_order_number",
+              "value": "={{ $json.replacement_order_number }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "shortage_qty",
+              "value": "={{ $json.shortage_details }}"
+            },
+            {
+              "name": "remediation_type",
+              "value": "={{ $json.customer_choice }}"
+            },
+            {
+              "name": "delivery_date",
+              "value": "={{ $json.delivery_date }}"
+            },
+            {
+              "name": "claim_source",
+              "value": "={{ $json.claim_source }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f1135c64-bc03-45b8-9e4d-be80ba6573e6",
+      "name": "Log to Replacement Orders CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2320,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.sapApiUrl }}/drivers/{{ $json.driver_id }}/metrics",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__SAP API Authorization Token__>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "driver_id",
+              "value": "={{ $json.driver_id }}"
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.order_number }}"
+            },
+            {
+              "name": "delivery_accuracy",
+              "value": "false"
+            },
+            {
+              "name": "shortage_qty",
+              "value": "={{ $json.shortage_details }}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b002e2d6-6509-4823-8212-63392ee28c85",
+      "name": "Update Driver Performance Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2544,
+        -24
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "review_required",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "id-2",
+              "name": "review_reason",
+              "value": "low_ai_confidence",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "confidence_score",
+              "value": "={{ $json.confidence }}",
+              "type": "number"
+            },
+            {
+              "id": "id-4",
+              "name": "order_number",
+              "value": "={{ $json.order_number }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2660ebab-02bf-4cf2-91bd-889d4f787f74",
+      "name": "Flag for Manual Review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -272,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__Manual Review Queue API URL__>",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "<__PLACEHOLDER_VALUE__Review Queue API Key__>"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "={{ $json.order_number }}"
+            },
+            {
+              "name": "customer_id",
+              "value": "={{ $json.customer_id }}"
+            },
+            {
+              "name": "review_reason",
+              "value": "={{ $json.review_reason }}"
+            },
+            {
+              "name": "confidence_score",
+              "value": "={{ $json.confidence_score }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.body.image_url }}"
+            },
+            {
+              "name": "priority",
+              "value": "high"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0ee7d64b-60fd-4e89-9559-7e029fb6a3cd",
+      "name": "Send to Manual Review Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        16,
+        272
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "476447c1-5225-40ed-a063-10009a1a624e",
+      "name": "Merge Route Paths",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1200,
+        -24
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Inbound Claim Webhook": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Route by Claim Source",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Claim Source": {
+      "main": [
+        [
+          {
+            "node": "Fetch Order from SAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Order from SAP": {
+      "main": [
+        [
+          {
+            "node": "Check Delivery Quantity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Delivery Quantity": {
+      "main": [
+        [
+          {
+            "node": "Calculate Shortage",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyze Image Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Image Evidence": {
+      "main": [
+        [
+          {
+            "node": "Check AI Confidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check AI Confidence": {
+      "main": [
+        [
+          {
+            "node": "Prepare Remediation Options",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Flag for Manual Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Shortage": {
+      "main": [
+        [
+          {
+            "node": "Prepare Remediation Options",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Remediation Options": {
+      "main": [
+        [
+          {
+            "node": "Customer Communication Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vertex AI Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Customer Communication Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Customer Communication Agent": {
+      "main": [
+        [
+          {
+            "node": "Create Replacement Order in SAP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Replacement Order in SAP": {
+      "main": [
+        [
+          {
+            "node": "Check Active Route Availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Active Route Availability": {
+      "main": [
+        [
+          {
+            "node": "Route Available Today?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Available Today?": {
+      "main": [
+        [
+          {
+            "node": "Add to Active Route",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Schedule Next-Day Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Active Route": {
+      "main": [
+        [
+          {
+            "node": "Merge Route Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Next-Day Delivery": {
+      "main": [
+        [
+          {
+            "node": "Merge Route Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Route Paths": {
+      "main": [
+        [
+          {
+            "node": "Send SMS Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send App Push Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS Notification": {
+      "main": [
+        [
+          {
+            "node": "Merge Notification Paths",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send App Push Notification": {
+      "main": [
+        [
+          {
+            "node": "Merge Notification Paths",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Notification Paths": {
+      "main": [
+        [
+          {
+            "node": "Wait 24h for Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 24h for Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up SMS": {
+      "main": [
+        [
+          {
+            "node": "Log to Replacement Orders CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Replacement Orders CSV": {
+      "main": [
+        [
+          {
+            "node": "Update Driver Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flag for Manual Review": {
+      "main": [
+        [
+          {
+            "node": "Send to Manual Review Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "384b153d-a6ac-492c-80c0-d19644bea890",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dbdcbc61759b74ce7dbae0577ee323edf97ebe03ba4a51299e539cd2f3dbb193"
+  },
+  "id": "ifsipC5ueVkjNtrr",
+  "tags": []
+}

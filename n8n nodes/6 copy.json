@@ -1,0 +1,587 @@
+{
+  "name": "6 copy",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "aa720279-684c-42b9-9d12-2437d23022c3",
+        "options": {}
+      },
+      "id": "eef66a8f-485d-4bcd-94eb-b5837c383347",
+      "name": "Product Embedding Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        512
+      ],
+      "webhookId": "aa720279-684c-42b9-9d12-2437d23022c3"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "productDataUrl",
+              "value": "<__PLACEHOLDER_VALUE__Product JSON file URL__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "zillizEndpoint",
+              "value": "<__PLACEHOLDER_VALUE__Zilliz Cloud endpoint__>",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "zillizCollectionName",
+              "value": "valio_products",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "elevenLabsApiUrl",
+              "value": "https://api.elevenlabs.io/v1",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "2ce064df-6f52-469c-a452-cad0760a9fcb",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        352,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.productDataUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "cf0a4d6c-db51-4436-a275-5793d94e8245",
+      "name": "Load Product Data JSON",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        576,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process product data and create embedding text\nconst items = $input.all();\nconst processedItems = [];\n\nfor (const item of items) {\n  const product = item.json;\n  \n  // Combine relevant fields for embedding text\n  const embeddingText = [\n    `Product Name: ${product.name || ''}`,\n    `Description: ${product.description || ''}`,\n    `Category: ${product.category || ''}`,\n    `Allergens: ${product.allergens || 'None'}`,\n    `Nutritional Info: ${product.nutritional_info || ''}`\n  ].filter(text => text.split(': ')[1]).join(' | ');\n  \n  // Prepare metadata object\n  const metadata = {\n    product_code: product.product_code || '',\n    brand: product.brand || '',\n    country_of_origin: product.country_of_origin || '',\n    vendor_name: product.vendor_name || '',\n    shelf_life: product.shelf_life || '',\n    storage_requirements: product.storage_requirements || ''\n  };\n  \n  // Create output item\n  processedItems.push({\n    json: {\n      text: embeddingText,\n      metadata: metadata\n    }\n  });\n}\n\nreturn processedItems;"
+      },
+      "id": "b3f7d17a-8ad4-406f-bc69-7155b959ba71",
+      "name": "Prepare Product Embeddings Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "chunkOverlap": 200,
+        "options": {}
+      },
+      "id": "b5d70475-0485-4d17-9c6a-c067da4dcb75",
+      "name": "Recursive Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        1232,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "textSplittingMode": "custom",
+        "options": {}
+      },
+      "id": "fdfc0866-759d-40c8-8c2d-5bf3fa873d19",
+      "name": "Document Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        1152,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "e6f61662-459b-44be-9f8b-21c5185bd58a",
+      "name": "OpenAI Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1024,
+        736
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Qcu3IYU7OavLTHFK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "milvusCollection": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.zillizCollectionName }}"
+        },
+        "options": {}
+      },
+      "id": "3f224b8e-57dd-4283-9e0a-e20f9a256b8e",
+      "name": "Zilliz Vector Store Insert",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreMilvus",
+      "typeVersion": 1.3,
+      "position": [
+        1056,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "a4d1c1a2-f734-4da8-ba29-de52d5d314e8",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "31134d77-4240-4ee9-9b4d-4abc4f05f624",
+      "name": "Product Similarity Search Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        944
+      ],
+      "webhookId": "a4d1c1a2-f734-4da8-ba29-de52d5d314e8"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "productName",
+              "value": "={{ $json.body.product_name }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "customerSegment",
+              "value": "={{ $json.body.customer_segment }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "allergenProfile",
+              "value": "={{ $json.body.allergen_profile }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "storageLocation",
+              "value": "={{ $json.body.storage_location }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "brandPreferences",
+              "value": "={{ $json.body.brand_preferences }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "890732bf-336d-437b-9a95-5422bd5165a0",
+      "name": "Extract Search Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        352,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "a1cd5c47-2b68-44c6-9816-a3070a07e224",
+      "name": "OpenAI Embeddings Query",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        128,
+        1168
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Qcu3IYU7OavLTHFK",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "milvusCollection": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $('Workflow Configuration').first().json.zillizCollectionName }}"
+        }
+      },
+      "id": "dcead538-e3b1-43a7-b925-3533a4a8acdc",
+      "name": "Zilliz Vector Store Retrieve",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreMilvus",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter and rank results based on allergen profile, storage location, and brand preferences\n\n// Get input items from vector store retrieval\nconst results = $input.all();\n\n// Get search parameters from previous nodes\nconst searchParams = $('Extract Search Parameters').first().json;\n\n// Extract filter criteria\nconst allergenProfile = searchParams.allergenProfile || [];\nconst storageLocation = searchParams.storageLocation || '';\nconst brandPreferences = searchParams.brandPreferences || [];\n\n// Filter results\nconst filteredResults = results.filter(item => {\n  const product = item.json;\n  \n  // Check allergen compatibility\n  const productAllergens = product.allergens || [];\n  const hasAllergenConflict = allergenProfile.some(allergen => \n    productAllergens.includes(allergen)\n  );\n  \n  if (hasAllergenConflict) {\n    return false;\n  }\n  \n  // Check storage location match (if specified)\n  if (storageLocation && product.storageLocation !== storageLocation) {\n    return false;\n  }\n  \n  return true;\n});\n\n// Rank results by similarity score and preference matching\nconst rankedResults = filteredResults.map(item => {\n  const product = item.json;\n  let score = product.similarityScore || 0;\n  \n  // Boost score for brand preferences\n  if (brandPreferences.includes(product.brand)) {\n    score += 0.1;\n  }\n  \n  // Boost score for exact storage location match\n  if (storageLocation && product.storageLocation === storageLocation) {\n    score += 0.05;\n  }\n  \n  return {\n    ...item,\n    json: {\n      ...product,\n      finalScore: score\n    }\n  };\n});\n\n// Sort by final score (descending)\nrankedResults.sort((a, b) => b.json.finalScore - a.json.finalScore);\n\n// Return top 5 results\nconst topResults = rankedResults.slice(0, 5);\n\nreturn topResults;"
+      },
+      "id": "f4362704-7719-4490-ba4d-6f319920e6d8",
+      "name": "Filter and Rank Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        128,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate natural language reasoning for each substitute product\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const product = item.json;\n  \n  // Extract key attributes for comparison\n  const originalProduct = product.originalProduct || {};\n  const substituteProduct = product.substituteProduct || {};\n  \n  // Build reasoning text comparing key attributes\n  let reasoning = `This ${substituteProduct.name || 'product'} is a suitable substitute because:\\n\\n`;\n  \n  // Compare origin\n  if (substituteProduct.origin && originalProduct.origin) {\n    if (substituteProduct.origin === originalProduct.origin) {\n      reasoning += `✓ Same origin (${substituteProduct.origin})\\n`;\n    } else {\n      reasoning += `• Different origin: ${substituteProduct.origin} vs ${originalProduct.origin}\\n`;\n    }\n  }\n  \n  // Compare allergens\n  if (substituteProduct.allergens && originalProduct.allergens) {\n    const subAllergens = Array.isArray(substituteProduct.allergens) ? substituteProduct.allergens : [];\n    const origAllergens = Array.isArray(originalProduct.allergens) ? originalProduct.allergens : [];\n    \n    if (subAllergens.length === 0 && origAllergens.length === 0) {\n      reasoning += `✓ No allergens in both products\\n`;\n    } else if (subAllergens.length < origAllergens.length) {\n      reasoning += `✓ Fewer allergens (${subAllergens.length} vs ${origAllergens.length})\\n`;\n    } else if (subAllergens.length === origAllergens.length) {\n      reasoning += `• Same number of allergens (${subAllergens.length})\\n`;\n    } else {\n      reasoning += `⚠ More allergens (${subAllergens.length} vs ${origAllergens.length})\\n`;\n    }\n  }\n  \n  // Compare fat content\n  if (substituteProduct.fatContent !== undefined && originalProduct.fatContent !== undefined) {\n    const fatDiff = substituteProduct.fatContent - originalProduct.fatContent;\n    if (Math.abs(fatDiff) < 1) {\n      reasoning += `✓ Similar fat content (${substituteProduct.fatContent}g vs ${originalProduct.fatContent}g)\\n`;\n    } else if (fatDiff < 0) {\n      reasoning += `✓ Lower fat content (${substituteProduct.fatContent}g vs ${originalProduct.fatContent}g)\\n`;\n    } else {\n      reasoning += `• Higher fat content (${substituteProduct.fatContent}g vs ${originalProduct.fatContent}g)\\n`;\n    }\n  }\n  \n  // Compare customer ratings\n  if (substituteProduct.rating !== undefined && originalProduct.rating !== undefined) {\n    const ratingDiff = substituteProduct.rating - originalProduct.rating;\n    if (ratingDiff >= 0.5) {\n      reasoning += `✓ Higher customer rating (${substituteProduct.rating}/5 vs ${originalProduct.rating}/5)\\n`;\n    } else if (Math.abs(ratingDiff) < 0.5) {\n      reasoning += `✓ Similar customer rating (${substituteProduct.rating}/5 vs ${originalProduct.rating}/5)\\n`;\n    } else {\n      reasoning += `• Lower customer rating (${substituteProduct.rating}/5 vs ${originalProduct.rating}/5)\\n`;\n    }\n  }\n  \n  // Add similarity score if available\n  if (product.similarityScore !== undefined) {\n    reasoning += `\\nSimilarity score: ${(product.similarityScore * 100).toFixed(1)}%`;\n  }\n  \n  // Format output with product details and reasoning\n  results.push({\n    json: {\n      productId: substituteProduct.id || substituteProduct.productId,\n      productName: substituteProduct.name,\n      productDetails: {\n        origin: substituteProduct.origin,\n        allergens: substituteProduct.allergens,\n        fatContent: substituteProduct.fatContent,\n        rating: substituteProduct.rating,\n        price: substituteProduct.price,\n        category: substituteProduct.category\n      },\n      originalProductDetails: {\n        name: originalProduct.name,\n        origin: originalProduct.origin,\n        allergens: originalProduct.allergens,\n        fatContent: originalProduct.fatContent,\n        rating: originalProduct.rating\n      },\n      reasoning: reasoning,\n      similarityScore: product.similarityScore,\n      metadata: product.metadata || {}\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "7861b326-a396-4817-bd5a-6d392976c256",
+      "name": "Generate Substitution Reasoning",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "62a90890-9002-4654-89e9-e0e287d70879",
+      "name": "Return Search Results",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        576,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "8fa95567-b608-46df-b33f-4bc29cbd7cad",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "56a177ad-2a56-4061-ba46-ce9e4c4e98be",
+      "name": "Voice Agent Context Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        128,
+        1376
+      ],
+      "webhookId": "8fa95567-b608-46df-b33f-4bc29cbd7cad"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Detect customer language from CRM preference or phone country code\n// Supports Finnish (fi), Swedish (sv), English (en)\n// Defaults to Finnish if detection fails\n\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  let detectedLanguage = 'fi'; // Default to Finnish\n  \n  // Try to get language from CRM preference\n  if (data.customerLanguage) {\n    const lang = data.customerLanguage.toLowerCase();\n    if (['fi', 'sv', 'en'].includes(lang)) {\n      detectedLanguage = lang;\n    } else if (lang.includes('finnish') || lang.includes('suomi')) {\n      detectedLanguage = 'fi';\n    } else if (lang.includes('swedish') || lang.includes('svenska')) {\n      detectedLanguage = 'sv';\n    } else if (lang.includes('english')) {\n      detectedLanguage = 'en';\n    }\n  }\n  // Try to detect from phone country code\n  else if (data.phoneCountryCode || data.countryCode) {\n    const countryCode = (data.phoneCountryCode || data.countryCode).toUpperCase();\n    \n    // Map country codes to languages\n    if (countryCode === 'FI' || countryCode === '+358' || countryCode === '358') {\n      detectedLanguage = 'fi';\n    } else if (countryCode === 'SE' || countryCode === '+46' || countryCode === '46') {\n      detectedLanguage = 'sv';\n    } else if (['US', 'GB', 'UK', 'CA', 'AU', 'NZ', '+1', '+44'].includes(countryCode)) {\n      detectedLanguage = 'en';\n    }\n  }\n  // Try to detect from phone number prefix\n  else if (data.phoneNumber) {\n    const phone = data.phoneNumber.replace(/\\s+/g, '');\n    if (phone.startsWith('+358') || phone.startsWith('358')) {\n      detectedLanguage = 'fi';\n    } else if (phone.startsWith('+46') || phone.startsWith('46')) {\n      detectedLanguage = 'sv';\n    } else if (phone.startsWith('+1') || phone.startsWith('+44')) {\n      detectedLanguage = 'en';\n    }\n  }\n  \n  results.push({\n    json: {\n      ...data,\n      detectedLanguage: detectedLanguage,\n      languageName: detectedLanguage === 'fi' ? 'Finnish' : detectedLanguage === 'sv' ? 'Swedish' : 'English'\n    }\n  });\n}\n\nreturn results;"
+      },
+      "id": "d7d04b28-40ff-4abd-b344-d2922a21a5ca",
+      "name": "Detect Customer Language",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        1376
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "=// Multilingual script templates\nconst templates = {\n  finnish: {\n    greeting: \"Hei! Tämä on {{store_name}}.\",\n    productUnavailable: \"Valitettavasti tuote {{product_name}} ei ole tällä hetkellä saatavilla.\",\n    substitutionOffer: \"Voimme kuitenkin tarjota korvaavan tuotteen: {{substitute_name}}.\",\n    comparison: \"Tämä tuote on samanlainen kuin alkuperäinen, mutta {{comparison_details}}.\",\n    delivery: \"Toimitus tapahtuu {{delivery_date}}.\",\n    question: \"Haluaisitko hyväksyä tämän korvaavan tuotteen?\"\n  },\n  swedish: {\n    greeting: \"Hej! Det här är {{store_name}}.\",\n    productUnavailable: \"Tyvärr är produkten {{product_name}} inte tillgänglig för tillfället.\",\n    substitutionOffer: \"Vi kan dock erbjuda en ersättningsprodukt: {{substitute_name}}.\",\n    comparison: \"Denna produkt är liknande den ursprungliga, men {{comparison_details}}.\",\n    delivery: \"Leverans sker {{delivery_date}}.\",\n    question: \"Vill du acceptera denna ersättningsprodukt?\"\n  },\n  english: {\n    greeting: \"Hello! This is {{store_name}}.\",\n    productUnavailable: \"Unfortunately, the product {{product_name}} is currently unavailable.\",\n    substitutionOffer: \"However, we can offer a substitute product: {{substitute_name}}.\",\n    comparison: \"This product is similar to the original, but {{comparison_details}}.\",\n    delivery: \"Delivery will be on {{delivery_date}}.\",\n    question: \"Would you like to accept this substitute product?\"\n  }\n};\n\n// Get input data\nconst language = $input.item.json.detected_language || 'english';\nconst productName = $input.item.json.product_name || 'the requested product';\nconst substituteName = $input.item.json.substitute_name || 'a similar product';\nconst storeName = $input.item.json.store_name || 'your local store';\nconst deliveryDate = $input.item.json.delivery_date || 'soon';\nconst comparisonDetails = $input.item.json.comparison_details || 'has similar features';\n\n// Select template based on detected language\nconst template = templates[language.toLowerCase()] || templates.english;\n\n// Replace template variables with actual values\nconst replaceVariables = (text, variables) => {\n  return text\n    .replace(/{{product_name}}/g, variables.product_name)\n    .replace(/{{substitute_name}}/g, variables.substitute_name)\n    .replace(/{{store_name}}/g, variables.store_name)\n    .replace(/{{delivery_date}}/g, variables.delivery_date)\n    .replace(/{{comparison_details}}/g, variables.comparison_details);\n};\n\nconst variables = {\n  product_name: productName,\n  substitute_name: substituteName,\n  store_name: storeName,\n  delivery_date: deliveryDate,\n  comparison_details: comparisonDetails\n};\n\n// Generate complete script\nconst script = [\n  replaceVariables(template.greeting, variables),\n  replaceVariables(template.productUnavailable, variables),\n  replaceVariables(template.substitutionOffer, variables),\n  replaceVariables(template.comparison, variables),\n  replaceVariables(template.delivery, variables),\n  replaceVariables(template.question, variables)\n].join(' ');\n\n// Return the generated script\nreturn {\n  json: {\n    language: language,\n    script: script,\n    product_name: productName,\n    substitute_name: substituteName,\n    delivery_date: deliveryDate\n  }\n};"
+      },
+      "id": "6d7d3f1f-de57-45cc-bf85-fc12e091d443",
+      "name": "Generate Multilingual Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        1376
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Workflow Configuration').first().json.elevenLabsApiUrl }}/text-to-speech",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $('Generate Multilingual Script').item.json.script }}"
+            },
+            {
+              "name": "voice_settings",
+              "value": "={{ $('Generate Multilingual Script').item.json.voiceModel }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "7a024da5-f2e4-4056-a67c-c656f7177b2f",
+      "name": "Call ElevenLabs API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        800,
+        1376
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "60e505ac-417a-45b0-903c-57b61dd619b4",
+      "name": "Return Voice Context",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1024,
+        1376
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Product Embedding Trigger": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Load Product Data JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Product Data JSON": {
+      "main": [
+        [
+          {
+            "node": "Prepare Product Embeddings Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Document Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Document Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Zilliz Vector Store Insert",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Zilliz Vector Store Insert",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Product Embeddings Text": {
+      "main": [
+        [
+          {
+            "node": "Zilliz Vector Store Insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Product Similarity Search Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Search Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Embeddings Query": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Zilliz Vector Store Retrieve",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter and Rank Results": {
+      "main": [
+        [
+          {
+            "node": "Generate Substitution Reasoning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Substitution Reasoning": {
+      "main": [
+        [
+          {
+            "node": "Return Search Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voice Agent Context Trigger": {
+      "main": [
+        [
+          {
+            "node": "Detect Customer Language",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Customer Language": {
+      "main": [
+        [
+          {
+            "node": "Generate Multilingual Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Multilingual Script": {
+      "main": [
+        [
+          {
+            "node": "Call ElevenLabs API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call ElevenLabs API": {
+      "main": [
+        [
+          {
+            "node": "Return Voice Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "45764bae-0d49-4969-b366-1164bbf9301e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dbdcbc61759b74ce7dbae0577ee323edf97ebe03ba4a51299e539cd2f3dbb193"
+  },
+  "id": "ShEXpm6mB4buJ3kY",
+  "tags": []
+}
