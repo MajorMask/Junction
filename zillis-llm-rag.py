@@ -6,8 +6,8 @@ from anthropic import Anthropic
 
 # --- Milvus setup ---
 milvus_client = MilvusClient(
-    uri="https://in03-3acec75a2b7ac12.serverless.gcp-us-west1.cloud.zilliz.com",
-    token="9e515129d3126e1e8b0c34bf2443aa7c13136ef1d0e568fbcfe217f4720a1eb051114287d61d37898759f72a7f5ff914cb091ddf"
+    uri="my_uri",
+    token="my_token"
 )
 
 collection_name = "my_rag_collection"
@@ -101,8 +101,7 @@ retrieved_lines_with_distances = [
 print(json.dumps(retrieved_lines_with_distances, indent=4))
 
 # --- Claude LLM Call ---
-claude_client = Anthropic(api_key="K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")
-
+claude_client = Anthropic(api_key="claude_key")
 context = "\n".join([line_with_distance[0] for line_with_distance in retrieved_lines_with_distances])
 
 SYSTEM_PROMPT = "You are an AI assistant. Use the provided context to answer the user's question about product substitutes."
