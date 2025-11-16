@@ -152,7 +152,7 @@ cd <repo-folder>
 
 ## Credits
 
-Built for the Valio Aimo Junction 2025 hackathon 
+Built for the Valio Aimo Junction 2025 hackathon by Mini Militia
 
 ---
 
@@ -160,3 +160,4 @@ Built for the Valio Aimo Junction 2025 hackathon
 
 
 MIT License
+
