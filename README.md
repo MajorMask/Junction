@@ -152,10 +152,11 @@ cd <repo-folder>
 
 ## Credits
 
-Built for the Valio Aimo Junction 2025 hackathon by [Your Team Name].
+Built for the Valio Aimo Junction 2025 hackathon 
 
 ---
 
 ## License
+
 
 MIT License
